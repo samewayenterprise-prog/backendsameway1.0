@@ -28,3 +28,24 @@ GOAL: Backend repo ready — migrations, schema deltas, SMS-skip dev auth.
 4. Re-test mobile onboarding end-to-end with +994501234567 / 123456.
 5. Later: pick SMS provider; Epoint Edge Functions (charge/refund
    watchers) — next backend milestone.
+
+## CP-7 · Services layer (2026-07-23)
+- Migration 0005: notifications.sent_at + unsent index; routes parcel
+  prefs; generate_recurring_rides() (28-day horizon, watermark,
+  idempotent via one_per_route_slot) + pg_cron 03:00; refund-queue index.
+- Edge Functions: payments-watcher (parcel charges 90/10 split, booking
+  fees via record_booking_fee, refund queue), notify-dispatch (FCM,
+  log-only without key, original push copy per type), admin-kyc
+  (secret-header manual review). Shared: service client + payment
+  provider abstraction — sandbox default, Epoint slots marked TODO.
+- Follow loop now complete on paper: generator → rides insert →
+  fan-out trigger → notifications → notify-dispatch → FCM.
+
+## Remaining after CP-7
+1. Apply migrations 0001–0005 (SQL Editor, filename order).
+2. Dashboard: Phone provider + test OTPs (docs/dev-auth-skip-sms.md).
+3. Deploy the 3 functions + secrets + minute schedules
+   (docs/edge-functions.md).
+4. E2E: onboarding → publish weekly route → run generator once
+   (`select generate_recurring_rides();`) → follower notification row.
+5. Later: Epoint live (checkout + webhook), payouts, FCM v1, SMS vendor.

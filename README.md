@@ -30,7 +30,11 @@ SMS is intentionally skipped — see `docs/dev-auth-skip-sms.md`. Enable
 the Phone provider and add the two test numbers; the mobile flow then
 works end-to-end with fixed codes.
 
+## Services layer (built)
+`supabase/functions/` — payments-watcher, notify-dispatch, admin-kyc,
+plus the SQL ride generator in migration 0005. Deploy, secrets,
+schedules and the sandbox test recipe: `docs/edge-functions.md`.
+
 ## Next backend milestone
-Payments Edge Functions (Epoint): charge-on-accept watcher for parcels,
-fee charge via `record_booking_fee()`, refund-queue watcher
-(`transactions` rows with type=refund, status=pending), payout batching.
+Epoint live integration (checkout flow + webhook function, payouts) —
+slots marked in `supabase/functions/_shared/payments.ts`.
