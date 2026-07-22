@@ -1,0 +1,18 @@
+# Supabase CLI config — local development stack (`supabase start`).
+# The hosted project is configured via the dashboard; this file mirrors
+# the parts that matter for dev parity.
+
+project_id = "backendsameway"
+
+[auth]
+enable_signup = true
+
+[auth.sms]
+enable_signup = true
+enable_confirmations = true
+
+# Fixed OTPs for dev/test — no SMS provider needed. Mirrors the test
+# numbers documented in docs/dev-auth-skip-sms.md for the hosted project.
+[auth.sms.test_otp]
+"+994501234567" = "123456"
+"+994551234567" = "123456"
