@@ -49,3 +49,28 @@ GOAL: Backend repo ready — migrations, schema deltas, SMS-skip dev auth.
 4. E2E: onboarding → publish weekly route → run generator once
    (`select generate_recurring_rides();`) → follower notification row.
 5. Later: Epoint live (checkout + webhook), payouts, FCM v1, SMS vendor.
+
+## CP-8 · Admin panel (2026-07-23)
+- admin/ — single-file Express server (service-role key server-side
+  only): password login (timing-safe, signed cookie), ops dashboard,
+  KYC queue with 10-min signed previews from the private documents
+  bucket (selfie via {uid}/selfie.jpg convention), Approve/Reject,
+  reports queue (Uphold → resolved → penalty trigger; Dismiss), user
+  search. Trust-zone light styling per DESIGN.md.
+- Deploy kit: .env.example, systemd unit, docs/admin-deploy-vps.md —
+  one-paste install for 46.224.137.253; default exposure = SSH tunnel
+  (HOST=127.0.0.1), public mode documented with caveats.
+- Clarified scope: VPS hosts ONLY the admin panel. Backend = hosted
+  Supabase; mobile = TestFlight/APK.
+- Gaps logged: app lacks a "KYC rejected — please redo" state.
+- Process note: first commit attempt failed (git identity unset) and
+  the clone was deleted before verification — rebuilt from session
+  sources; rule going forward: verify pushed hash BEFORE cleanup.
+
+## Remaining after CP-8
+1–4. unchanged from CP-7 (migrations, test OTPs, function deploys, e2e).
+5. VPS: run docs/admin-deploy-vps.md one-paste block; log in via tunnel.
+6. Mobile: commit the local compile fixes from the Mac (const
+   FileOptions removals + supabase_flutter imports) — repo is behind
+   the working copy.
+7. Revoke the PAT when this session's pushes are done.

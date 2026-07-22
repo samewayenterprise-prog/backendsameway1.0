@@ -1,0 +1,323 @@
+// SameWay admin panel — single-file Express server.
+// Design rules: service-role key lives ONLY here (never in a browser
+// bundle); UI follows the DESIGN.md trust zone (light, violet/azure,
+// no gamification color). Auth is a shared password + signed cookie —
+// right-sized for a solo-operator launch; swap for Supabase-auth roles
+// when there's a second admin.
+import express from "express";
+import crypto from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
+
+const {
+  SUPABASE_URL,
+  SUPABASE_SECRET_KEY,
+  ADMIN_PASSWORD,
+  SESSION_SECRET,
+  PORT = "8080",
+  HOST = "127.0.0.1",
+} = process.env;
+
+for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SECRET_KEY, ADMIN_PASSWORD, SESSION_SECRET })) {
+  if (!v) { console.error(`Missing env: ${k}`); process.exit(1); }
+}
+
+const db = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
+const app = express();
+app.use(express.urlencoded({ extended: false }));
+
+// ── tiny signed-cookie session ─────────────────────────────────────
+const sign = (v) => crypto.createHmac("sha256", SESSION_SECRET).update(v).digest("hex");
+const SESSION_VALUE = "sw-admin-1";
+const COOKIE = `sw=${SESSION_VALUE}.${sign(SESSION_VALUE)}`;
+
+function authed(req) {
+  const raw = (req.headers.cookie || "").split(";").map((s) => s.trim()).find((s) => s.startsWith("sw="));
+  if (!raw) return false;
+  const [, val] = raw.split("=");
+  const [v, sig] = (val || "").split(".");
+  if (!v || !sig) return false;
+  const expect = sign(v);
+  return sig.length === expect.length &&
+    crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expect)) && v === SESSION_VALUE;
+}
+function requireAuth(req, res, next) {
+  if (authed(req)) return next();
+  res.redirect("/login");
+}
+
+// ── layout (trust-zone styling per DESIGN.md, light-first) ─────────
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtDate = (d) => (d ? new Date(d).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "—");
+
+function layout(title, body, active = "") {
+  const tab = (href, label, key) =>
+    `<a href="${href}" class="tab${active === key ? " on" : ""}">${label}</a>`;
+  return `<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)} · SameWay Admin</title>
+<style>
+:root{--bg:#F6F4FB;--sf:#fff;--ln:#E1DCEF;--tx:#241E38;--sub:#6E6690;--vi:#5B23FF;--az:#008BFF;--ok:#1FA866;--er:#E03A57}
+*{box-sizing:border-box;margin:0}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{display:flex;align-items:center;gap:18px;padding:14px 22px;background:var(--sf);border-bottom:1px solid var(--ln)}
+header b{font-size:15px}
+.tab{color:var(--sub);text-decoration:none;font-weight:600;font-size:13.5px;padding:6px 10px;border-radius:8px}
+.tab.on{color:#fff;background:var(--vi)}
+main{max-width:1060px;margin:26px auto;padding:0 20px}
+h1{font-size:20px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:22px}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:14px;padding:14px 16px}
+.card .n{font-size:24px;font-weight:800}
+.card .l{font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+table{width:100%;border-collapse:collapse;background:var(--sf);border:1px solid var(--ln);border-radius:14px;overflow:hidden}
+th,td{padding:10px 12px;text-align:left;font-size:13px;border-bottom:1px solid var(--ln);vertical-align:top}
+th{font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.5px}
+tr:last-child td{border-bottom:none}
+.btn{display:inline-block;background:var(--vi);color:#fff;border:none;border-radius:9px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none}
+.btn.ghost{background:#fff;color:var(--vi);border:1.5px solid var(--vi)}
+.btn.dgr{background:var(--er)}
+.badge{display:inline-block;border:1px solid var(--ln);border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700}
+.badge.ok{color:var(--ok);border-color:var(--ok)}
+.badge.er{color:var(--er);border-color:var(--er)}
+.sub{color:var(--sub);font-size:12px}
+img.doc{max-width:230px;border-radius:10px;border:1px solid var(--ln);display:block}
+form.inline{display:inline}
+input[type=text],input[type=password]{padding:10px 12px;border:1.5px solid var(--ln);border-radius:10px;font-size:14px;width:100%;max-width:340px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.section{margin-bottom:26px}
+</style></head><body>
+<header><b>SAME<span style="color:var(--vi)">WAY</span> · Admin</b>
+${tab("/", "Dashboard", "dash")}${tab("/kyc", "KYC", "kyc")}${tab("/reports", "Reports", "rep")}${tab("/users", "Users", "usr")}
+<span style="flex:1"></span><a class="tab" href="/logout">Log out</a></header>
+<main>${body}</main></body></html>`;
+}
+
+// ── auth routes ────────────────────────────────────────────────────
+app.get("/login", (_req, res) => {
+  res.send(layout("Login", `
+    <h1>Admin login</h1>
+    <form method="post" action="/login" class="card" style="max-width:380px">
+      <p class="sub" style="margin-bottom:10px">Ops access only.</p>
+      <input type="password" name="password" placeholder="Admin password" autofocus>
+      <div style="margin-top:12px"><button class="btn">Enter</button></div>
+    </form>`));
+});
+app.post("/login", (req, res) => {
+  const given = Buffer.from(String(req.body.password || ""));
+  const want = Buffer.from(ADMIN_PASSWORD);
+  const ok = given.length === want.length && crypto.timingSafeEqual(given, want);
+  if (!ok) return res.send(layout("Login", `<h1>Wrong password</h1><a class="btn ghost" href="/login">Try again</a>`));
+  res.setHeader("Set-Cookie", `${COOKIE}; HttpOnly; Path=/; Max-Age=43200; SameSite=Lax`);
+  res.redirect("/");
+});
+app.get("/logout", (_req, res) => {
+  res.setHeader("Set-Cookie", "sw=; Path=/; Max-Age=0");
+  res.redirect("/login");
+});
+
+// ── dashboard ──────────────────────────────────────────────────────
+app.get("/", requireAuth, async (_req, res, next) => {
+  try {
+    const count = async (table, mod) => {
+      let q = db.from(table).select("*", { count: "exact", head: true });
+      if (mod) q = mod(q);
+      const { count: c } = await q;
+      return c ?? 0;
+    };
+    const nowIso = new Date().toISOString();
+    const [users, kyc, reports, rides, bookings, parcels, unsent] = await Promise.all([
+      count("users"),
+      count("user_verifications", (q) => q.not("id_document_url", "is", null).or("id_verified_at.is.null,selfie_verified_at.is.null")),
+      count("reports", (q) => q.in("status", ["open", "in_review"])),
+      count("rides", (q) => q.gte("departure_at", nowIso).eq("status", "published")),
+      count("bookings", (q) => q.eq("status", "confirmed")),
+      count("parcels", (q) => q.in("status", ["accepted", "in_transit"])),
+      count("notifications", (q) => q.is("sent_at", null)),
+    ]);
+    const { data: rev } = await db.from("transactions")
+      .select("amount_platform").eq("type", "charge").eq("status", "settled").limit(1000);
+    const revenue = (rev ?? []).reduce((s, r) => s + Number(r.amount_platform || 0), 0).toFixed(2);
+
+    const cards = [
+      [users, "Users"], [kyc, "KYC pending"], [reports, "Open reports"],
+      [rides, "Upcoming rides"], [bookings, "Confirmed bookings"],
+      [parcels, "Parcels in flight"], [unsent, "Push backlog"], [`${revenue} ₼`, "Platform revenue (settled)"],
+    ].map(([n, l]) => `<div class="card"><div class="n">${esc(n)}</div><div class="l">${esc(l)}</div></div>`).join("");
+
+    const { data: latest } = await db.from("users")
+      .select("full_name, phone, created_at").order("created_at", { ascending: false }).limit(8);
+    const rows = (latest ?? []).map((u) =>
+      `<tr><td>${esc(u.full_name || "—")}</td><td>${esc(u.phone)}</td><td class="sub">${fmtDate(u.created_at)}</td></tr>`).join("");
+
+    res.send(layout("Dashboard", `
+      <h1>Dashboard</h1>
+      <div class="grid">${cards}</div>
+      <div class="section"><h1 style="font-size:15px">Latest signups</h1>
+      <table><tr><th>Name</th><th>Phone</th><th>Joined</th></tr>${rows || `<tr><td colspan=3 class="sub">No users yet</td></tr>`}</table></div>`, "dash"));
+  } catch (e) { next(e); }
+});
+
+// ── KYC queue ──────────────────────────────────────────────────────
+app.get("/kyc", requireAuth, async (_req, res, next) => {
+  try {
+    const { data: pending } = await db.from("user_verifications")
+      .select("user_id, id_verified_at, selfie_verified_at, id_document_url")
+      .not("id_document_url", "is", null)
+      .or("id_verified_at.is.null,selfie_verified_at.is.null")
+      .limit(30);
+
+    const ids = (pending ?? []).map((p) => p.user_id);
+    const { data: us } = ids.length
+      ? await db.from("users").select("id, full_name, phone, created_at").in("id", ids)
+      : { data: [] };
+    const byId = new Map((us ?? []).map((u) => [u.id, u]));
+
+    const blocks = [];
+    for (const p of pending ?? []) {
+      const u = byId.get(p.user_id) || {};
+      const signed = async (path) => {
+        const { data } = await db.storage.from("documents").createSignedUrl(path, 600);
+        return data?.signedUrl || null;
+      };
+      const idUrl = await signed(p.id_document_url);
+      const selfieUrl = await signed(`${p.user_id}/selfie.jpg`); // path convention set by the mobile app
+      blocks.push(`
+        <div class="card section">
+          <div class="row" style="justify-content:space-between">
+            <div><b>${esc(u.full_name || "No name yet")}</b> · ${esc(u.phone || "")}
+              <div class="sub">joined ${fmtDate(u.created_at)} · id ${p.id_verified_at ? "✓" : "—"} · selfie ${p.selfie_verified_at ? "✓" : "—"}</div>
+            </div>
+            <div class="row">
+              <form class="inline" method="post" action="/kyc/${p.user_id}/approve"><button class="btn">Approve both</button></form>
+              <form class="inline" method="post" action="/kyc/${p.user_id}/reject"><button class="btn dgr">Reject</button></form>
+            </div>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <div>${idUrl ? `<img class="doc" src="${idUrl}">` : `<span class="badge er">ID image missing</span>`}<div class="sub">Document</div></div>
+            <div>${selfieUrl ? `<img class="doc" src="${selfieUrl}">` : `<span class="badge er">Selfie missing</span>`}<div class="sub">Selfie</div></div>
+          </div>
+        </div>`);
+    }
+    res.send(layout("KYC", `<h1>KYC queue</h1>${blocks.join("") || `<p class="sub">Queue is empty — nothing waiting for review.</p>`}`, "kyc"));
+  } catch (e) { next(e); }
+});
+
+app.post("/kyc/:uid/approve", requireAuth, async (req, res, next) => {
+  try {
+    const now = new Date().toISOString();
+    await db.from("user_verifications")
+      .update({ id_verified_at: now, selfie_verified_at: now })
+      .eq("user_id", req.params.uid);
+    res.redirect("/kyc");
+  } catch (e) { next(e); }
+});
+
+app.post("/kyc/:uid/reject", requireAuth, async (req, res, next) => {
+  try {
+    // Clearing the document path removes them from the queue and forces
+    // a fresh capture in the app. (Gap to close later: a "rejected —
+    // please redo" state surfaced to the user; today they simply remain
+    // unverified.)
+    await db.from("user_verifications")
+      .update({ id_verified_at: null, selfie_verified_at: null, id_document_url: null })
+      .eq("user_id", req.params.uid);
+    res.redirect("/kyc");
+  } catch (e) { next(e); }
+});
+
+// ── reports ────────────────────────────────────────────────────────
+app.get("/reports", requireAuth, async (_req, res, next) => {
+  try {
+    const { data: reps } = await db.from("reports")
+      .select("*").in("status", ["open", "in_review"])
+      .order("created_at", { ascending: true }).limit(40);
+
+    const ids = [...new Set((reps ?? []).flatMap((r) => [r.reporter_id, r.reported_user_id]).filter(Boolean))];
+    const { data: us } = ids.length
+      ? await db.from("users").select("id, full_name, phone").in("id", ids)
+      : { data: [] };
+    const byId = new Map((us ?? []).map((u) => [u.id, u]));
+    const who = (id) => { const u = byId.get(id); return u ? `${esc(u.full_name || "—")} (${esc(u.phone)})` : "—"; };
+
+    const rows = (reps ?? []).map((r) => `
+      <tr>
+        <td><span class="badge">${esc(r.reason)}</span><div class="sub">${fmtDate(r.created_at)}</div></td>
+        <td>${who(r.reporter_id)}</td>
+        <td>${r.reported_user_id ? who(r.reported_user_id) : "—"}</td>
+        <td>${esc(r.description || "")}</td>
+        <td class="row">
+          <form class="inline" method="post" action="/reports/${r.id}/resolve"><button class="btn dgr">Uphold</button></form>
+          <form class="inline" method="post" action="/reports/${r.id}/dismiss"><button class="btn ghost">Dismiss</button></form>
+        </td>
+      </tr>`).join("");
+
+    res.send(layout("Reports", `
+      <h1>Reports</h1>
+      <p class="sub" style="margin-bottom:10px">Uphold = status <b>resolved</b> → the reputation penalty fires automatically (−10 no-show, −20 otherwise). Dismiss = no penalty.</p>
+      <table><tr><th>Reason</th><th>Reporter</th><th>Reported</th><th>Details</th><th></th></tr>
+      ${rows || `<tr><td colspan=5 class="sub">No open reports.</td></tr>`}</table>`, "rep"));
+  } catch (e) { next(e); }
+});
+
+app.post("/reports/:id/resolve", requireAuth, async (req, res, next) => {
+  try { await db.from("reports").update({ status: "resolved" }).eq("id", req.params.id); res.redirect("/reports"); }
+  catch (e) { next(e); }
+});
+app.post("/reports/:id/dismiss", requireAuth, async (req, res, next) => {
+  try { await db.from("reports").update({ status: "dismissed" }).eq("id", req.params.id); res.redirect("/reports"); }
+  catch (e) { next(e); }
+});
+
+// ── users ──────────────────────────────────────────────────────────
+app.get("/users", requireAuth, async (req, res, next) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    let list = [];
+    if (q) {
+      const { data } = await db.from("users")
+        .select("id, full_name, phone, created_at, is_deleted")
+        .or(`phone.ilike.%${q}%,full_name.ilike.%${q}%`)
+        .limit(30);
+      list = data ?? [];
+    } else {
+      const { data } = await db.from("users")
+        .select("id, full_name, phone, created_at, is_deleted")
+        .order("created_at", { ascending: false }).limit(30);
+      list = data ?? [];
+    }
+    const ids = list.map((u) => u.id);
+    const { data: vs } = ids.length
+      ? await db.from("user_verifications").select("user_id, id_verified_at, selfie_verified_at").in("user_id", ids)
+      : { data: [] };
+    const vById = new Map((vs ?? []).map((v) => [v.user_id, v]));
+
+    const rows = list.map((u) => {
+      const v = vById.get(u.id) || {};
+      const verified = v.id_verified_at && v.selfie_verified_at;
+      return `<tr>
+        <td>${esc(u.full_name || "—")}${u.is_deleted ? ' <span class="badge er">deleted</span>' : ""}</td>
+        <td>${esc(u.phone)}</td>
+        <td>${verified ? '<span class="badge ok">verified</span>' : '<span class="badge">phone only</span>'}</td>
+        <td class="sub">${fmtDate(u.created_at)}</td>
+      </tr>`;
+    }).join("");
+
+    res.send(layout("Users", `
+      <h1>Users</h1>
+      <form method="get" action="/users" class="row section">
+        <input type="text" name="q" value="${esc(q)}" placeholder="Search phone or name">
+        <button class="btn">Search</button>
+      </form>
+      <table><tr><th>Name</th><th>Phone</th><th>Status</th><th>Joined</th></tr>
+      ${rows || `<tr><td colspan=4 class="sub">No matches.</td></tr>`}</table>`, "usr"));
+  } catch (e) { next(e); }
+});
+
+// ── errors ─────────────────────────────────────────────────────────
+app.use((err, _req, res, _next) => {
+  console.error(err);
+  res.status(500).send(layout("Error", `<h1>Something broke</h1><pre class="sub">${esc(err.message)}</pre>`));
+});
+
+app.listen(Number(PORT), HOST, () =>
+  console.log(`SameWay admin on http://${HOST}:${PORT} (${HOST === "127.0.0.1" ? "tunnel-only" : "public"})`));

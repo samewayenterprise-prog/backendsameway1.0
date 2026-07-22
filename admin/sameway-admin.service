@@ -1,0 +1,14 @@
+[Unit]
+Description=SameWay admin panel
+After=network.target
+
+[Service]
+EnvironmentFile=/etc/sameway-admin.env
+WorkingDirectory=/opt/sameway/admin
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+User=www-data
+
+[Install]
+WantedBy=multi-user.target
