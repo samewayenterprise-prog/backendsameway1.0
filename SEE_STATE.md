@@ -362,3 +362,101 @@ isn't mysterious.
 2. Mobile: ride detail needs a "Negotiate" button + 4-template picker
    (doc has the screen pointer) — not built.
 3. Everything still open from CP-9 through CP-15.
+
+## CP-17 · Table admin — the Django-admin equivalent (2026-07-23)
+Prompted by seeing another project's Django admin (auto-CRUD for every
+model). We have no ORM/Django-equivalent — hand-built one bespoke page
+per workflow, leaving ~30 of 37 tables with zero admin visibility.
+
+Built: admin/data-admin.js mounts AdminJS (verified real package,
+inspected actual installed source before writing code, not from memory)
+at /data via @adminjs/sql's raw-Postgres adapter — auto-introspects the
+schema, no ORM/models needed. Three-tier safety policy per table (FULL
+CRUD / READ-ONLY / HIDDEN) so this can't be used to bypass the
+integrity rules built earlier today (price ceiling, trigger-owned
+counters, ledger-only-via-service-role). New tables must be triaged
+before being added — default is NOT full CRUD.
+
+Real bug found and fixed, not worked around: @adminjs/sql v2.2.6's
+FK-detection query identifies a table by bare `relname` with zero
+schema qualification. Every real Supabase project has both auth.users
+and public.users — the moment this library introspects `users`
+specifically, that ambiguity throws "more than one row returned by a
+subquery," silently dropping the single most important table from the
+admin entirely. Confirmed structural (would hit the real hosted DB
+identically), not a local-only quirk. Considered and REJECTED a
+users_admin view-based workaround (dodges the crash but breaks every
+other table's auto-linked "click to view this user" relation, since
+FK-matching is by table name). Instead patched the actual 1-line bug
+via patch-package, schema-qualifying the query using a parameter
+(schemaName) the function already received but never used. Verified
+via a from-scratch `rm -rf node_modules && npm install` that the patch
+auto-reapplies through postinstall — this is exactly what happens on
+the VPS's first install.
+
+Testing discipline: since this sandbox has no live Supabase project,
+installed Postgres 16 locally, hand-built a stand-in auth/storage/cron
+layer (roles, auth.uid(), schemas, foldername helper) matching real
+Supabase's shape, and applied all 16 real migrations end to end — 37
+tables came back clean. Then actually logged in through the real HTTP
+login flow, followed the session cookie, and confirmed against the
+real JSON API (not just the SPA shell, which returns identical bytes
+for valid/invalid resources — caught myself nearly treating that as
+proof before checking further): users resource returns real paginated
+data; user_verifications is genuinely unreachable (the error response
+lists every actually-registered resource, and it's absent); the
+transactions edit action is genuinely forbidden (AdminJS reports
+action-level errors in the JSON body as ForbiddenError, not via HTTP
+status — worth knowing for future debugging here).
+
+Also found and fixed a dormant bug: .gitignore's `.env.*` pattern was
+also silently blocking `.env.example` from ever being committed all
+session — every earlier "update" to that file was invisible to git.
+Fixed with a `!.env.example` negation, verified against a minimal
+isolated repo first since git check-ignore's exit code turned out not
+to mean what it looks like it means (git status/add is the real
+ground truth, not check-ignore's exit code).
+
+## Remaining after CP-17
+1. Set SUPABASE_DB_URL in /etc/sameway-admin.env on the VPS (Supabase
+   Dashboard -> Project Settings -> Database -> Connection string),
+   git pull, npm install (patch auto-applies), systemctl restart.
+2. Everything still open from CP-9 through CP-16.
+
+## CP-17 addendum — the patch needed two more fixes than first thought
+Re-verified from a clean state after this session's Postgres service
+restarted mid-testing (filesystem/repo state survived intact, only the
+DB server process died — re-confirmed by re-running every test that
+had already passed, rather than trusting stale output).
+
+The originally-committed patch only fixed the foreign-key-detection
+query (fix #1). Re-running the FULL verification chain surfaced two
+more, real bugs from the exact same root cause (unqualified table-name
+matching across the auth/public schema collision):
+
+- Fix #2: the primary-key-detection join
+  (`information_schema.key_column_usage`) matched on table_name only,
+  missing table_schema — silently duplicating rows instead of erroring.
+- Fix #3: those duplicate rows collide with a SEPARATE, genuine fact
+  about our schema — `users.id` is legitimately both the primary key
+  AND a foreign key (to auth.users). Even with fix #2 alone, `id` still
+  produces two joined rows (one per constraint), and whichever lands
+  second silently overwrites the correct one — breaking primary-key
+  detection entirely (`idColumn` resolved to `undefined`, which would
+  make AdminJS refuse to build the resource at all). Fixed by
+  deduplicating in JS, preferring whichever row is actually flagged
+  PRIMARY KEY.
+
+Stopping after fix #1 alone would have left `users` appearing to work
+(present in the table list) while being silently broken underneath —
+worse than an obvious error, since it might not have surfaced until
+someone actually tried to use the Users resource. Regenerated the
+patch file via `npx patch-package @adminjs/sql` to capture all three
+fixes as one complete diff, then re-ran the entire verification chain
+(clean reinstall, real login, real session, real query against a real
+seeded row, idProperty resolving to 'id', a genuine FK on a different
+table still resolving correctly, user_verifications' 500 body
+literally listing all 37 registered resources with it absent,
+transactions' new-action ForbiddenError, and the complete server.js
+booting both old and new routes side by side) against the corrected
+patch before trusting it.

@@ -8,6 +8,7 @@ import express from "express";
 import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
+import { mountDataAdmin } from "./data-admin.js";
 
 const {
   SUPABASE_URL,
@@ -108,7 +109,7 @@ input[type=text],input[type=password]{padding:10px 12px;border:1.5px solid var(-
 .subhead{font-weight:700;font-size:11.5px;color:var(--sub);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.4px}
 </style></head><body>
 <header><a class="brand" href="/"><img src="/sameway-mark.png" alt="SameWay"><span>SAME<span style="color:var(--vi)">WAY</span></span><span class="sep">·</span><span style="font-weight:600;color:var(--sub)">Admin</span></a>
-${tab("/", "Dashboard", "dash")}${tab("/kyc", "KYC", "kyc")}${tab("/reports", "Reports", "rep")}${tab("/users", "Users", "usr")}${tab("/markets", "Markets", "mkt")}${tab("/ops", "Ops", "ops")}${tab("/settings", "Settings", "set")}
+${tab("/", "Dashboard", "dash")}${tab("/kyc", "KYC", "kyc")}${tab("/reports", "Reports", "rep")}${tab("/users", "Users", "usr")}${tab("/markets", "Markets", "mkt")}${tab("/ops", "Ops", "ops")}${tab("/settings", "Settings", "set")}<a href="/data" target="_blank" class="tab">All Tables ↗</a>
 <span style="flex:1"></span><a class="tab" href="/logout">Log out</a></header>
 <main>${body}</main></body></html>`;
 }
@@ -641,6 +642,14 @@ app.post("/settings/fees", requireAuth, async (req, res, next) => {
 });
 
 // ── errors ─────────────────────────────────────────────────────────
+// ── table admin (auto-CRUD for every table, the Django-admin
+// equivalent) — mounted at /data, separate login-free-standing UI
+// (AdminJS's own React frontend), gated by the same ADMIN_PASSWORD.
+// See docs/data-admin.md for the safety model (which tables are full
+// CRUD vs read-only vs hidden) and the real bug this had to work
+// around in @adminjs/sql.
+await mountDataAdmin(app);
+
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).send(layout("Error", `<h1>Something broke</h1><pre class="sub">${esc(err.message)}</pre>`));

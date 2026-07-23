@@ -1,0 +1,46 @@
+diff --git a/node_modules/@adminjs/sql/lib/dialects/postgres.parser.js b/node_modules/@adminjs/sql/lib/dialects/postgres.parser.js
+index ea43916..d6f2e76 100644
+--- a/node_modules/@adminjs/sql/lib/dialects/postgres.parser.js
++++ b/node_modules/@adminjs/sql/lib/dialects/postgres.parser.js
+@@ -117,14 +117,30 @@ export class PostgresParser extends BaseDatabaseParser {
+             .select('col.column_name', 'col.ordinal_position', 'col.column_default', 'col.is_nullable', 'col.is_updatable', 'col.data_type', 'tco.constraint_type as key_type')
+             .leftJoin('information_schema.key_column_usage as kcu', (c) => c
+             .on('kcu.column_name', 'col.column_name')
+-            .on('kcu.table_name', 'col.table_name'))
++            .on('kcu.table_name', 'col.table_name')
++            .on('kcu.table_schema', 'col.table_schema'))
+             .leftJoin('information_schema.table_constraints as tco', (c) => c
+             .on('tco.constraint_name', 'kcu.constraint_name')
+             .on('tco.constraint_schema', 'kcu.constraint_schema')
+             .onVal('tco.constraint_type', 'PRIMARY KEY'))
+             .where('col.table_schema', schemaName)
+             .where('col.table_name', table);
+-        const columns = await query;
++        const rawColumns = await query;
++        // A column can appear more than once here if it participates in
++        // more than one constraint (e.g. users.id is both the PRIMARY KEY
++        // and a FOREIGN KEY to auth.users(id) — a standard Supabase
++        // pattern). Without deduping, whichever row arrives last silently
++        // overwrites the correct one in the resource's property map,
++        // which can erase primary-key detection entirely. Keep the
++        // PRIMARY KEY row for a given column name if one exists.
++        const byColumn = new Map();
++        for (const col of rawColumns) {
++            const existing = byColumn.get(col.column_name);
++            if (!existing || col.key_type === 'PRIMARY KEY') {
++                byColumn.set(col.column_name, col);
++            }
++        }
++        const columns = Array.from(byColumn.values());
+         const relQuery = this.knex.raw(`
+       select
+         (select r.relname from pg_class r where r.oid = c.conrelid) as table, 
+@@ -132,7 +148,7 @@ export class PostgresParser extends BaseDatabaseParser {
+         where attrelid = c.conrelid and ARRAY[attnum] <@ c.conkey) as col, 
+         (select r.relname from pg_class r where r.oid = c.confrelid) as referenced_table
+       from pg_constraint c
+-      where c.conrelid = (select oid from pg_class where relname = '${table}')
++      where c.conrelid = (select c2.oid from pg_class c2 join pg_namespace n2 on n2.oid = c2.relnamespace where c2.relname = '${table}' and n2.nspname = '${schemaName}')
+       and (select r.relname from pg_class r where r.oid = c.confrelid) is not null
+     `);
+         const relations = await relQuery;
