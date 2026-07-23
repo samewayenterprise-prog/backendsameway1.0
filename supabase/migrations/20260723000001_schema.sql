@@ -95,7 +95,7 @@ create table public.driver_profiles (
 );
 
 create table public.vehicles (
-  id                   uuid primary key default uuid_generate_v4(),
+  id                   uuid primary key default gen_random_uuid(),
   driver_id            uuid not null references public.users(id) on delete cascade,
   make                 text not null,
   model                text not null,
@@ -114,7 +114,7 @@ create index vehicles_driver_idx on public.vehicles(driver_id);
 -- ============================================================
 
 create table public.routes (
-  id              uuid primary key default uuid_generate_v4(),
+  id              uuid primary key default gen_random_uuid(),
   driver_id       uuid not null references public.users(id) on delete cascade,
   vehicle_id      uuid not null references public.vehicles(id),
   from_address    text not null,
@@ -139,7 +139,7 @@ create table public.routes (
 create index routes_driver_idx on public.routes(driver_id) where is_active;
 
 create table public.route_stops (
-  id                uuid primary key default uuid_generate_v4(),
+  id                uuid primary key default gen_random_uuid(),
   route_id          uuid not null references public.routes(id) on delete cascade,
   order_index       int  not null,
   address           text not null,
@@ -150,7 +150,7 @@ create table public.route_stops (
 );
 
 create table public.rides (
-  id                  uuid primary key default uuid_generate_v4(),
+  id                  uuid primary key default gen_random_uuid(),
   route_id            uuid references public.routes(id) on delete set null,
   driver_id           uuid not null references public.users(id) on delete cascade,
   vehicle_id          uuid not null references public.vehicles(id),
@@ -185,7 +185,7 @@ create index rides_from_geo_idx  on public.rides(from_lat, from_lng);
 create index rides_to_geo_idx    on public.rides(to_lat, to_lng);
 
 create table public.ride_stops (
-  id                   uuid primary key default uuid_generate_v4(),
+  id                   uuid primary key default gen_random_uuid(),
   ride_id              uuid not null references public.rides(id) on delete cascade,
   order_index          int  not null,
   address              text not null,
@@ -201,7 +201,7 @@ create table public.ride_stops (
 -- ============================================================
 
 create table public.bookings (
-  id                 uuid primary key default uuid_generate_v4(),
+  id                 uuid primary key default gen_random_uuid(),
   ride_id            uuid not null references public.rides(id) on delete cascade,
   lead_passenger_id  uuid not null references public.users(id),
   pickup_stop_id     uuid references public.ride_stops(id),
@@ -221,7 +221,7 @@ create index bookings_expiry_idx on public.bookings(expires_at)
   where status in ('pending','awaiting_group');
 
 create table public.booking_passengers (
-  id          uuid primary key default uuid_generate_v4(),
+  id          uuid primary key default gen_random_uuid(),
   booking_id  uuid not null references public.bookings(id) on delete cascade,
   user_id     uuid references public.users(id),         -- null until invitee accepts
   invited_via invite_via_t not null default 'direct',
@@ -232,9 +232,9 @@ create index bp_booking_idx on public.booking_passengers(booking_id);
 create index bp_user_idx    on public.booking_passengers(user_id);
 
 create table public.booking_invites (
-  id         uuid primary key default uuid_generate_v4(),
+  id         uuid primary key default gen_random_uuid(),
   booking_id uuid not null references public.bookings(id) on delete cascade,
-  token      text unique not null default encode(gen_random_bytes(16),'hex'),
+  token      text unique not null default encode(extensions.gen_random_bytes(16),'hex'),
   created_by uuid not null references public.users(id),
   expires_at timestamptz not null,
   used_by    uuid references public.users(id),
@@ -249,7 +249,7 @@ create index invites_booking_idx on public.booking_invites(booking_id);
 -- not offered here even though it's offered for seat bookings.
 -- ============================================================
 create table public.parcels (
-  id                 uuid primary key default uuid_generate_v4(),
+  id                 uuid primary key default gen_random_uuid(),
   ride_id            uuid not null references public.rides(id),
   sender_id          uuid not null references public.users(id),
   recipient_name     text not null,
@@ -290,7 +290,7 @@ create table public.follows (
 create index follows_driver_idx on public.follows(driver_id);
 
 create table public.reviews (
-  id          uuid primary key default uuid_generate_v4(),
+  id          uuid primary key default gen_random_uuid(),
   booking_id  uuid references public.bookings(id) on delete cascade,
   parcel_id   uuid references public.parcels(id) on delete cascade,
   ride_id     uuid not null references public.rides(id) on delete cascade,
@@ -314,7 +314,7 @@ create index reviews_reviewee_idx on public.reviews(reviewee_id, created_at desc
 -- ============================================================
 
 create table public.conversations (
-  id         uuid primary key default uuid_generate_v4(),
+  id         uuid primary key default gen_random_uuid(),
   ride_id    uuid not null references public.rides(id) on delete cascade,
   booking_id uuid references public.bookings(id) on delete cascade,
   parcel_id  uuid references public.parcels(id) on delete cascade,
@@ -333,7 +333,7 @@ create table public.conversation_participants (
 create index cp_user_idx on public.conversation_participants(user_id);
 
 create table public.messages (
-  id              uuid primary key default uuid_generate_v4(),
+  id              uuid primary key default gen_random_uuid(),
   conversation_id uuid not null references public.conversations(id) on delete cascade,
   sender_id       uuid references public.users(id),      -- null for system
   body            text not null,
@@ -347,7 +347,7 @@ create index messages_conv_idx on public.messages(conversation_id, created_at);
 -- ============================================================
 
 create table public.payment_methods (
-  id             uuid primary key default uuid_generate_v4(),
+  id             uuid primary key default gen_random_uuid(),
   user_id        uuid not null references public.users(id) on delete cascade,
   type           stored_method_t not null,
   provider       text not null default 'epoint',
@@ -359,7 +359,7 @@ create table public.payment_methods (
 create index pm_user_idx on public.payment_methods(user_id);
 
 create table public.transactions (
-  id                uuid primary key default uuid_generate_v4(),
+  id                uuid primary key default gen_random_uuid(),
   booking_id        uuid references public.bookings(id),
   parcel_id         uuid references public.parcels(id),
   payer_id          uuid not null references public.users(id),
@@ -387,7 +387,7 @@ create unique index txn_provider_uq on public.transactions(provider, provider_tx
   where provider_txn_id is not null;            -- webhook idempotency
 
 create table public.payouts (
-  id                 uuid primary key default uuid_generate_v4(),
+  id                 uuid primary key default gen_random_uuid(),
   driver_id          uuid not null references public.users(id),
   amount             numeric(10,2) not null check (amount > 0),
   currency           text not null default 'AZN',
@@ -409,7 +409,7 @@ create table public.driver_balances (
 -- ============================================================
 
 create table public.notifications (
-  id         uuid primary key default uuid_generate_v4(),
+  id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null references public.users(id) on delete cascade,
   type       notification_t not null,
   data       jsonb not null default '{}',
@@ -419,7 +419,7 @@ create table public.notifications (
 create index notif_user_idx on public.notifications(user_id, created_at desc);
 
 create table public.device_tokens (
-  id           uuid primary key default uuid_generate_v4(),
+  id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null references public.users(id) on delete cascade,
   fcm_token    text not null unique,
   platform     platform_t not null,
@@ -428,7 +428,7 @@ create table public.device_tokens (
 create index dt_user_idx on public.device_tokens(user_id);
 
 create table public.reports (
-  id                  uuid primary key default uuid_generate_v4(),
+  id                  uuid primary key default gen_random_uuid(),
   reporter_id         uuid not null references public.users(id),
   reported_user_id    uuid references public.users(id),
   reported_ride_id    uuid references public.rides(id),
@@ -456,7 +456,7 @@ create table public.blocks (
 -- ============================================================
 
 create table public.badges (
-  id          uuid primary key default uuid_generate_v4(),
+  id          uuid primary key default gen_random_uuid(),
   code        text unique not null,           -- 'driver_rookie','rider_explorer_5', etc.
   category    badge_category_t not null,
   name        text not null,
@@ -478,7 +478,7 @@ create table public.user_points (
 );
 
 create table public.point_transactions (
-  id         uuid primary key default uuid_generate_v4(),
+  id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null references public.users(id) on delete cascade,
   delta      int not null,
   reason     point_reason_t not null,
@@ -520,7 +520,7 @@ create table public.rider_streaks (
 -- reps are earned/lost). Ranks never downgrade once achieved.
 -- ============================================================
 create table public.ranks (
-  id         uuid primary key default uuid_generate_v4(),
+  id         uuid primary key default gen_random_uuid(),
   rank_number int unique not null,
   era        text not null,
   name       text not null,
