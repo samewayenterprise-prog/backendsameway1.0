@@ -19,17 +19,41 @@ touches real data, hosted or otherwise. Re-run after any RLS change.
 
 ## Hosted project
 
-pgTAP isn't enabled by default on hosted projects. To run there:
+Two prerequisites, each needed once:
+
+- pgTAP isn't enabled by default on hosted projects — enable it via
+  Dashboard → Database → Extensions → pgtap, or:
+
+  ```bash
+  supabase link --project-ref gipmcjmhqvtfcsssaotn
+  supabase db query --linked 'create extension if not exists pgtap with schema extensions;'
+  ```
+
+- `supabase test db --linked` does NOT work without Docker Desktop — the
+  CLI runs pg_prove in a container even when targeting a remote database.
+  If you have Docker, that command works. Without it, run the file
+  directly with psql (verified working method):
 
 ```bash
-supabase link --project-ref gipmcjmhqvtfcsssaotn
-# enable pgTAP once (Dashboard → Database → Extensions → pgtap, or):
-psql "$(supabase db url)" -c 'create extension if not exists pgtap;'
-supabase test db --linked
+PGPASSWORD='<db password>' psql \
+  -h db.gipmcjmhqvtfcsssaotn.supabase.co -p 5432 -U postgres -d postgres \
+  -X -tA -f supabase/tests/000_rls.test.sql \
+  | grep -E '^(ok|not ok|1\.\.|#)'
 ```
 
+The grep keeps only the TAP lines (`1..28`, per-assertion `ok`/`not ok`,
+and `#` diagnostics for failures) and drops psql's INSERT/SET noise.
+Expect `ok 1` … `ok 28` and no `not ok` lines; pgTAP prints a
+`# Looks like you failed N tests of 28` trailer when anything fails.
+
+Don't use `supabase db query --linked` to run the whole file — it only
+returns the last statement's result set, which silently swallows every
+assertion's output.
+
 Same rollback safety applies — the test wraps itself in a transaction
-and undoes all its fixture inserts.
+and undoes all its fixture inserts, so running against the hosted
+project never leaves data behind (even on failure: an aborted
+transaction still ends at the file's `rollback`).
 
 ## Reading a failure
 
