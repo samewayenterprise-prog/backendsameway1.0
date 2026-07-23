@@ -8,6 +8,42 @@ Each entry links to the real commit if you want to see the actual code.
 
 ---
 
+## 2026-07-23 — "Added a page that shows every single table in our database"
+Commit: [`ca0c430`](https://github.com/samewayenterprise-prog/backendsameway1.0/commit/ca0c430)
+
+You showed a screenshot of another project's admin panel — one page
+listing every database table with Add/Change buttons, built
+automatically. We had nothing like that. Our admin panel only had
+hand-built pages for the specific things we designed for (KYC review,
+reports, markets), leaving about 30 other tables — vehicles, routes,
+ranks, badges, streaks, device tokens, and more — with zero visibility
+for anyone running the business day to day.
+
+This adds that missing page, at "All Tables" in the admin panel. Point
+it at the real database and it builds view/edit/add/delete screens for
+every table automatically — no page-by-page coding needed.
+
+Three safety rules keep this from undoing the careful work we did
+earlier today: some tables (vehicles, device tokens) are fully
+editable, since fixing a typo there is safe. Some (transactions,
+payouts, bookings) are view-only — you can look, but can't edit them
+here directly, because those must only ever change through the proper
+flow (a payment confirming, a booking request), never a manual
+shortcut. And one table (people's ID verification documents) is
+hidden completely — the existing ID-review page already handles that
+correctly, and a shortcut around it would defeat the whole point of
+actually checking someone's ID before approving them.
+
+While building this we found and fixed two real bugs in the
+open-source tool we used, both stemming from the same root cause: it
+wasn't accounting for how Supabase names things internally, which
+would have silently broken the single most important table — Users —
+the moment it touched our real database, with no error to warn anyone.
+We fixed the actual bugs (not a workaround) and proved the fix survives
+a completely fresh install, not just the machine we built it on.
+
+---
+
 ## 2026-07-23 — "The 'ask the driver' feature is now actually live on the server"
 
 The "ask a quick question before you book" feature below was written
