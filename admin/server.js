@@ -94,7 +94,7 @@ input[type=text],input[type=password]{padding:10px 12px;border:1.5px solid var(-
 .section{margin-bottom:26px}
 </style></head><body>
 <header><b>SAME<span style="color:var(--vi)">WAY</span> · Admin</b>
-${tab("/", "Dashboard", "dash")}${tab("/kyc", "KYC", "kyc")}${tab("/reports", "Reports", "rep")}${tab("/users", "Users", "usr")}
+${tab("/", "Dashboard", "dash")}${tab("/kyc", "KYC", "kyc")}${tab("/reports", "Reports", "rep")}${tab("/users", "Users", "usr")}${tab("/settings", "Settings", "set")}
 <span style="flex:1"></span><a class="tab" href="/logout">Log out</a></header>
 <main>${body}</main></body></html>`;
 }
@@ -317,6 +317,76 @@ app.get("/users", requireAuth, async (req, res, next) => {
       </form>
       <table><tr><th>Name</th><th>Phone</th><th>Status</th><th>Joined</th></tr>
       ${rows || `<tr><td colspan=4 class="sub">No matches.</td></tr>`}</table>`, "usr"));
+  } catch (e) { next(e); }
+});
+
+// ── settings (platform fee toggle) ─────────────────────────────────
+app.get("/settings", requireAuth, async (_req, res, next) => {
+  try {
+    const { data: s } = await db.from("platform_settings")
+      .select("fees_enabled, booking_fee_azn, parcel_platform_pct, updated_at")
+      .eq("id", 1).maybeSingle();
+
+    const status = s?.fees_enabled
+      ? `<span class="badge ok">FEES ON</span>`
+      : `<span class="badge">FEES OFF · platform is free</span>`;
+
+    res.send(layout("Settings", `
+      <h1>Platform settings</h1>
+      <div class="card section">
+        <div class="row" style="justify-content:space-between">
+          <div>
+            <b>Platform revenue</b> ${status}
+            <div class="sub">Booking fee ${s?.booking_fee_azn ?? "1.50"} ₼/seat · parcel cut ${s?.parcel_platform_pct ?? 10}% · last changed ${fmtDate(s?.updated_at)}</div>
+          </div>
+          <form method="post" action="/settings/toggle-fees" class="inline">
+            <input type="hidden" name="to" value="${s?.fees_enabled ? "off" : "on"}">
+            <button class="btn ${s?.fees_enabled ? "dgr" : ""}">Turn ${s?.fees_enabled ? "OFF" : "ON"}</button>
+          </form>
+        </div>
+      </div>
+      <div class="card">
+        <b>How the toggle works</b>
+        <div class="sub" style="margin-top:6px">
+          OFF: new bookings get fee_amount=0 and parcel platform cut=0. Riders pay drivers directly in cash (or the seat price on card); SameWay makes nothing. Existing in-flight charges keep flowing — the flip only affects new bookings and new parcel charges.<br><br>
+          ON: bookings stamp the configured fee per seat, payments-watcher charges it online, and parcel charges take the configured %. Toggle takes effect on the very next booking (create_booking reads this row fresh each time).
+        </div>
+      </div>
+      <form method="post" action="/settings/fees" class="card section">
+        <b>Fee amounts</b> <span class="sub">(only used when fees are ON)</span>
+        <div class="row" style="margin-top:10px">
+          <label>Booking fee (AZN/seat)
+            <input type="text" name="booking_fee_azn" value="${s?.booking_fee_azn ?? "1.50"}">
+          </label>
+          <label>Parcel platform cut (%)
+            <input type="text" name="parcel_platform_pct" value="${s?.parcel_platform_pct ?? 10}">
+          </label>
+        </div>
+        <div style="margin-top:10px"><button class="btn ghost">Save amounts</button></div>
+      </form>`, "set"));
+  } catch (e) { next(e); }
+});
+
+app.post("/settings/toggle-fees", requireAuth, async (req, res, next) => {
+  try {
+    const on = String(req.body.to || "") === "on";
+    await db.from("platform_settings")
+      .update({ fees_enabled: on }).eq("id", 1);
+    res.redirect("/settings");
+  } catch (e) { next(e); }
+});
+
+app.post("/settings/fees", requireAuth, async (req, res, next) => {
+  try {
+    const fee = Number(req.body.booking_fee_azn);
+    const pct = parseInt(String(req.body.parcel_platform_pct), 10);
+    const patch = {};
+    if (Number.isFinite(fee) && fee >= 0) patch.booking_fee_azn = fee;
+    if (Number.isInteger(pct) && pct >= 0 && pct <= 50) patch.parcel_platform_pct = pct;
+    if (Object.keys(patch).length) {
+      await db.from("platform_settings").update(patch).eq("id", 1);
+    }
+    res.redirect("/settings");
   } catch (e) { next(e); }
 });
 

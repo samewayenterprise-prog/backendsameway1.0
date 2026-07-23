@@ -18,7 +18,19 @@ import { provider } from "../_shared/payments.ts";
 Deno.serve(async (_req) => {
   const db = serviceClient();
   const pay = provider();
-  const pct = Number(Deno.env.get("PARCEL_PLATFORM_PCT") ?? "10");
+
+  // Read the platform-level fee setting. Falls back to env for local
+  // dev where the settings table may not exist yet.
+  const { data: settings } = await db
+    .from("platform_settings")
+    .select("fees_enabled, parcel_platform_pct")
+    .eq("id", 1)
+    .maybeSingle();
+  const feesOn = settings?.fees_enabled ?? false;
+  const pct = feesOn
+    ? (settings?.parcel_platform_pct ?? Number(Deno.env.get("PARCEL_PLATFORM_PCT") ?? "10"))
+    : 0;
+
   const out = { parcels: 0, fees: 0, refunds: 0, payouts: 0, errors: [] as string[] };
 
   // ── 1 · parcel charges ────────────────────────────────────────────

@@ -133,3 +133,28 @@ GOAL: Backend repo ready — migrations, schema deltas, SMS-skip dev auth.
    Edge Function deploys + secrets + schedules, mobile onboarding e2e,
    mobile local-fix commit.
 4. Revoke the PAT if/when used again for this push.
+
+## CP-12 · Fee toggle (2026-07-23)
+- Migration 0007 (platform_settings): singleton row (id=1) with
+  fees_enabled + booking_fee_azn + parcel_platform_pct. Seeded with
+  fees_enabled=FALSE (launch state = free for 3 months).
+- create_booking updated to read fees_enabled fresh on every call —
+  mid-day flip takes effect on the very next booking. Fee scales per
+  seat (v_fee * p_seat_count), capping handled by admin.
+- payments-watcher updated to read the same setting for parcel cut;
+  when OFF, platform takes 0% (driver keeps 100% of parcel price).
+- Admin panel: new Settings tab. One-click ON/OFF toggle, editable
+  fee/pct amounts, plain-language explainer of what the toggle
+  actually does to in-flight vs. new charges.
+- Client-readable via RLS (public select) so the mobile app can show
+  "SameWay is free right now" copy without needing a service call.
+
+## Remaining after CP-12
+1. Run migration 0006 + 0007 on hosted project (Claude Code or
+   Supabase Dashboard SQL Editor).
+2. VPS: git pull + systemctl restart sameway-admin to pick up the
+   Settings page.
+3. Redeploy payments-watcher (`supabase functions deploy
+   payments-watcher`) so it reads the new setting.
+4. Run the RLS suite for real — still WRITTEN NOT VERIFIED.
+5. Phone provider + test OTPs, mobile e2e, revoke PAT.
