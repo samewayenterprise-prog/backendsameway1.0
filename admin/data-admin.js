@@ -47,7 +47,6 @@
 import AdminJS from "adminjs";
 import AdminJSExpress from "@adminjs/express";
 import Adapter, { Database, Resource } from "@adminjs/sql";
-import session from "express-session";
 
 AdminJS.registerAdapter({ Database, Resource });
 
@@ -133,7 +132,7 @@ function navFor(table) {
   return { name: "Other", icon: "Database" };
 }
 
-export async function mountDataAdmin(app) {
+export async function mountDataAdmin(app, requireAuth) {
   const dbUrl = process.env.SUPABASE_DB_URL;
   if (!dbUrl) {
     console.warn(
@@ -165,52 +164,37 @@ export async function mountDataAdmin(app) {
   const admin = new AdminJS({
     resources,
     rootPath: "/data",
-    // loginPath/logoutPath do NOT derive from rootPath automatically —
-    // the protected-routes handler reads admin.options.loginPath
-    // directly and defaults to '/admin/login' regardless of rootPath
-    // if this isn't set explicitly. Found by testing: omitting these
-    // sent every unauthenticated request to a 404 at /admin/login,
-    // which doesn't exist since this panel is mounted at /data.
-    loginPath: "/data/login",
-    logoutPath: "/data/logout",
     branding: {
       companyName: "SameWay",
       logo: "/sameway-mark.png",
       favicon: "/favicon.ico",
       withMadeWithLove: false,
+      // Real brand hex values (matches admin/server.js's --vi/--az CSS
+      // vars), not a full reskin — AdminJS's component layout/fonts
+      // still look like AdminJS. This is the "same colors" half of
+      // unification, not "identical framework" — that would mean
+      // hand-building pages for all ~30 tables instead of using this
+      // tool at all. See docs/data-admin.md.
+      theme: {
+        colors: {
+          primary100: "#5B23FF",
+          primary80: "#7C4DFF",
+          primary60: "#9D77FF",
+          primary40: "#BEA1FF",
+          primary20: "#DFCBFF",
+          accent: "#008BFF",
+        },
+      },
     },
   });
 
-  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-  const SESSION_SECRET = process.env.SESSION_SECRET;
-  const ADMIN_IDENTITY = "admin@sameway.internal";
+  // No separate AdminJS login. This was two logins for one panel —
+  // log into admin.sameway.io, then log in AGAIN for /data with the
+  // same password. Instead: an unauthenticated AdminJS router, gated
+  // by the SAME signed-cookie session (`requireAuth`, defined in
+  // server.js) as every other page. Log in once; /data just works.
+  const router = AdminJSExpress.buildRouter(admin);
 
-  const router = AdminJSExpress.buildAuthenticatedRouter(
-    admin,
-    {
-      authenticate: async (email, password) => {
-        // Same single-operator password model as the rest of the
-        // panel — not a separate user table. See docs/data-admin.md
-        // if/when this needs to become per-person logins.
-        if (password === ADMIN_PASSWORD) {
-          return { email: ADMIN_IDENTITY };
-        }
-        return null;
-      },
-      cookiePassword: SESSION_SECRET,
-    },
-    null,
-    {
-      resave: false,
-      saveUninitialized: false,
-      secret: SESSION_SECRET,
-      // In-memory session store: fine for a single-operator tool.
-      // A restart logs everyone out — acceptable trade-off, documented
-      // in docs/data-admin.md rather than adding a session-store
-      // dependency for a low-traffic internal tool.
-    }
-  );
-
-  app.use(admin.options.rootPath, router);
+  app.use(admin.options.rootPath, requireAuth, router);
   console.log(`Table admin mounted at ${admin.options.rootPath} (${resources.length} tables)`);
 }

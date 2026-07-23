@@ -124,13 +124,43 @@ trade-off.
 
 ## Login
 
-Same single-operator password model as the rest of the panel — reuses
-`ADMIN_PASSWORD` and `SESSION_SECRET`, no separate user table. A fixed
-identity (`admin@sameway.internal`) is returned on successful auth.
-Session store is in-memory: a panel restart logs everyone out, which is
-an acceptable trade-off for a low-traffic internal tool rather than
-adding a session-store dependency for it. Revisit if this becomes a
-multi-person-login tool later.
+**One login for the whole panel, not two.** The first version of this
+mounted AdminJS's own separate login/session system — meaning you'd
+log into `admin.sameway.io`, then get asked to log in **again**
+separately for `/data`. That's gone. `/data` is now gated by the exact
+same signed-cookie session (`requireAuth` in `server.js`) as every
+other page. Log in once; every tab, including "All Tables," just
+works.
+
+This also means logging out of the main panel logs you out of `/data`
+too, and there's no separate AdminJS session to expire or manage.
+
+## What "unified" actually means here — and what it doesn't
+
+Three different levels, worth being honest about:
+
+1. **One login, one session.** ✅ Done — see above.
+2. **Matching brand colors.** ⚙️ Configured via AdminJS's
+   `branding.theme.colors` (real hex values: `primary100: #5B23FF`,
+   `accent: #008BFF`, matching the CSS vars already used in
+   `server.js`'s hand-built pages) — but this is a client-rendered
+   React app, so the actual color application happens via JavaScript
+   in the browser, not in the server-rendered HTML. Confirmed the
+   config is wired correctly (verified logo/companyName/
+   withMadeWithLove — siblings in the same object — do take effect),
+   but **the visual result needs a real browser check**, not just an
+   automated fetch test, and wasn't fully confirmed before shipping.
+3. **Pixel-identical layout, fonts, navigation.** ❌ Not attempted, and
+   not realistically achievable without replacing AdminJS entirely and
+   hand-building custom pages for all ~30 tables it currently covers.
+   AdminJS's component framework (sidebar, spacing, typography) is its
+   own, not ours — theming colors gets it *closer* to feeling like part
+   of SameWay, but it will never be byte-for-byte the same framework as
+   the hand-built pages without abandoning the tool this whole feature
+   exists to avoid rebuilding by hand.
+
+If full visual parity ever becomes a priority, that's a real,
+scoped decision to make explicitly — not a quick fix.
 
 ## Setup
 

@@ -648,7 +648,7 @@ app.post("/settings/fees", requireAuth, async (req, res, next) => {
 // See docs/data-admin.md for the safety model (which tables are full
 // CRUD vs read-only vs hidden) and the real bug this had to work
 // around in @adminjs/sql.
-await mountDataAdmin(app);
+await mountDataAdmin(app, requireAuth);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

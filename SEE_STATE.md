@@ -460,3 +460,45 @@ literally listing all 37 registered resources with it absent,
 transactions' new-action ForbiddenError, and the complete server.js
 booting both old and new routes side by side) against the corrected
 patch before trusting it.
+
+## CP-18 · Unified login for the table admin (2026-07-23)
+User pushed back correctly: "All Tables" required a SEPARATE login
+from the rest of the panel (AdminJS's own buildAuthenticatedRouter +
+its own session/cookie), which genuinely felt like two different
+products bolted together, not one admin backend.
+
+Fixed the part that's actually fixable without abandoning the tool:
+switched from AdminJS's own auth (buildAuthenticatedRouter, own login
+page, own express-session) to the unauthenticated buildRouter, gated
+by the SAME requireAuth signed-cookie middleware server.js already
+uses for every other page. mountDataAdmin(app) -> mountDataAdmin(app,
+requireAuth). Verified end-to-end, not assumed: hitting /data with no
+cookie redirects to OUR /login (not a separate one); logging into the
+main panel and then hitting /data returns 200 immediately, no second
+password prompt. express-session dependency removed entirely (no
+longer used); reinstalled clean to confirm nothing broke.
+
+Also pushed brand colors (primary100 #5B23FF, accent #008BFF, matching
+server.js's own CSS vars) via branding.theme.colors. Confirmed via
+source (@adminjs/design-system's real theme.d.ts) this is a real,
+correctly-shaped option and siblings in the same branding object
+(logo/companyName/withMadeWithLove) DO take effect — but AdminJS is a
+client-rendered React app, so the actual color application happens via
+JS in the browser and can't be confirmed via an automated fetch test
+the way the auth flow could. Documented this honestly in
+docs/data-admin.md rather than claiming full visual confirmation:
+login unification is proven; color theming is correctly configured but
+needs a real browser check.
+
+Also documented plainly, so it isn't re-litigated as a bug later: full
+pixel-identical layout/fonts/navigation between AdminJS and the
+hand-built pages is NOT achievable without replacing AdminJS entirely
+and hand-building all ~30 remaining tables — that's the actual
+trade-off this whole feature exists to avoid. Color/login unification
+is the realistic middle ground.
+
+## Remaining after CP-18
+1. Deploy: git pull + npm install (removes express-session) + restart.
+2. Visually confirm brand colors actually render correctly in a real
+   browser — not yet confirmed, only configured.
+3. Everything still open from CP-9 through CP-17.
