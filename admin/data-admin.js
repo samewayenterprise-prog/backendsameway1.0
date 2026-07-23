@@ -177,7 +177,7 @@ export async function mountDataAdmin(app) {
       companyName: "SameWay",
       logo: "/sameway-mark.png",
       favicon: "/favicon.ico",
-      softwareBrothers: false,
+      withMadeWithLove: false,
     },
   });
 
