@@ -158,3 +158,37 @@ GOAL: Backend repo ready — migrations, schema deltas, SMS-skip dev auth.
    payments-watcher`) so it reads the new setting.
 4. Run the RLS suite for real — still WRITTEN NOT VERIFIED.
 5. Phone provider + test OTPs, mobile e2e, revoke PAT.
+
+## CP-13 · Markets / country registry (2026-07-23)
+- Migration 0008 (markets): countries table — 249 ISO 3166-1
+  entries (generated via pycountry + pycountry-convert, 10 territories
+  needing manual region assignment fixed by hand), grouped by region
+  (7: Africa/Asia/Europe/N.America/S.America/Oceania/Antarctica) with
+  finer subregions carved out for Caucasus/Central Asia/Middle East
+  (the likely next-expansion neighbors). Each row: is_active
+  (market open/closed), payment_provider + payment_status enum
+  (not_connected/pending/connected/suspended), currency_code.
+  AZ pre-seeded: active=true, provider=epoint, status=connected —
+  matches the real current state. Every other market ships CLOSED;
+  nothing auto-opens. RLS: public read (mobile can show "live in your
+  country" / "coming soon"), writes are admin-panel/service-role only.
+- Admin panel: new Markets page. Region pill-nav, search by name/ISO,
+  "active only" filter, grouped rows with region/subregion headers,
+  each row a single form (currency, payment status dropdown, provider
+  text field, active checkbox) + one Save button.
+- Verified: migration SQL regenerated deterministically (same row
+  count, same AZ row) after a git-identity mistake destroyed the first
+  attempt's working files; server.js syntax (node --check); grouping
+  logic against mock data. NOT YET run against the live database.
+- Process failure (second occurrence): repeated the exact CP-8
+  mistake — fresh clone without git identity set, silent commit
+  failure, premature `rm -rf` before checking. The written rule
+  ("verify hash before cleanup") wasn't enough by itself. New rule:
+  set git config user.email/user.name IMMEDIATELY after every fresh
+  clone, before any other command, no exceptions — make it the first
+  line after `git clone`, not something done "when committing."
+
+## Remaining after CP-13
+1. Apply migration 0008 (Claude Code / supabase db push).
+2. VPS: git pull + restart to get the Markets tab.
+3. Everything still open from CP-9 through CP-12.

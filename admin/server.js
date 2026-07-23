@@ -97,9 +97,18 @@ form.inline{display:inline}
 input[type=text],input[type=password]{padding:10px 12px;border:1.5px solid var(--ln);border-radius:10px;font-size:14px;width:100%;max-width:340px}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .section{margin-bottom:26px}
+.pillnav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.pillnav a{color:var(--sub);text-decoration:none;font-size:12.5px;font-weight:700;padding:5px 12px;border:1px solid var(--ln);border-radius:99px;background:#fff}
+.pillnav a.on{background:var(--vi);color:#fff;border-color:var(--vi)}
+.mrow{display:grid;grid-template-columns:1fr 60px 90px 120px 1fr 120px;gap:8px;align-items:center;padding:8px 12px;font-size:12.5px;border-bottom:1px solid var(--ln)}
+.mrow.head{font-size:10.5px;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;font-weight:700}
+.mrow select,.mrow input[type=text]{padding:5px 7px;border:1.5px solid var(--ln);border-radius:7px;font-size:12px;width:100%}
+.mrow .btn{padding:5px 10px;font-size:11.5px}
+.regionhead{font-weight:800;font-size:13.5px;margin:20px 0 8px;padding-bottom:4px;border-bottom:2px solid var(--vi)}
+.subhead{font-weight:700;font-size:11.5px;color:var(--sub);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.4px}
 </style></head><body>
 <header><a class="brand" href="/"><img src="/sameway-mark.png" alt="SameWay"><span>SAME<span style="color:var(--vi)">WAY</span></span><span class="sep">·</span><span style="font-weight:600;color:var(--sub)">Admin</span></a>
-${tab("/", "Dashboard", "dash")}${tab("/kyc", "KYC", "kyc")}${tab("/reports", "Reports", "rep")}${tab("/users", "Users", "usr")}${tab("/settings", "Settings", "set")}
+${tab("/", "Dashboard", "dash")}${tab("/kyc", "KYC", "kyc")}${tab("/reports", "Reports", "rep")}${tab("/users", "Users", "usr")}${tab("/markets", "Markets", "mkt")}${tab("/settings", "Settings", "set")}
 <span style="flex:1"></span><a class="tab" href="/logout">Log out</a></header>
 <main>${body}</main></body></html>`;
 }
@@ -325,6 +334,104 @@ app.get("/users", requireAuth, async (req, res, next) => {
       </form>
       <table><tr><th>Name</th><th>Phone</th><th>Status</th><th>Joined</th></tr>
       ${rows || `<tr><td colspan=4 class="sub">No matches.</td></tr>`}</table>`, "usr"));
+  } catch (e) { next(e); }
+});
+
+// ── markets (country registry) ─────────────────────────────────────
+const REGIONS = ["Africa", "Asia", "Europe", "North America", "South America", "Oceania", "Antarctica"];
+
+app.get("/markets", requireAuth, async (req, res, next) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    const region = String(req.query.region || "").trim();
+    const activeOnly = req.query.active === "1";
+
+    let query = db.from("countries").select("*").order("region").order("subregion").order("name");
+    if (q) query = query.or(`name.ilike.%${q}%,iso2.ilike.%${q}%`);
+    if (region) query = query.eq("region", region);
+    if (activeOnly) query = query.eq("is_active", true);
+    const { data: countries } = await query;
+
+    const { count: activeCount } = await db.from("countries")
+      .select("*", { count: "exact", head: true }).eq("is_active", true);
+    const { count: connectedCount } = await db.from("countries")
+      .select("*", { count: "exact", head: true }).eq("payment_status", "connected");
+
+    const pill = (href, label, on) => `<a href="${href}" class="${on ? "on" : ""}">${esc(label)}</a>`;
+    const pills = [
+      pill(`/markets${activeOnly ? "?active=1" : ""}`, "All regions", !region),
+      ...REGIONS.map((r) => pill(
+        `/markets?region=${encodeURIComponent(r)}${activeOnly ? "&active=1" : ""}`, r, region === r
+      )),
+    ].join("");
+
+    // group by region then subregion for headers
+    const groups = new Map();
+    for (const c of countries ?? []) {
+      const key = `${c.region}|||${c.subregion}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(c);
+    }
+
+    let lastRegion = null;
+    const rows = [];
+    for (const [key, list] of groups) {
+      const [rg, sub] = key.split("|||");
+      if (rg !== lastRegion) { rows.push(`<div class="regionhead">${esc(rg)}</div>`); lastRegion = rg; }
+      if (sub !== rg) rows.push(`<div class="subhead">${esc(sub)}</div>`);
+      rows.push(`<div class="mrow head"><div>Country</div><div>ISO</div><div>Currency</div><div>Payment</div><div>Provider</div><div>Active</div></div>`);
+      for (const c of list) {
+        rows.push(`
+          <form class="mrow" method="post" action="/markets/${c.iso2}">
+            <div>${esc(c.name)}</div>
+            <div class="sub">${esc(c.iso2)}</div>
+            <div><input type="text" name="currency_code" value="${esc(c.currency_code || "")}" placeholder="—" maxlength="3" style="text-transform:uppercase"></div>
+            <div>
+              <select name="payment_status">
+                ${["not_connected", "pending", "connected", "suspended"].map((s) =>
+                  `<option value="${s}" ${c.payment_status === s ? "selected" : ""}>${s}</option>`).join("")}
+              </select>
+            </div>
+            <div><input type="text" name="payment_provider" value="${esc(c.payment_provider || "")}" placeholder="e.g. epoint"></div>
+            <div class="row" style="gap:8px">
+              <label class="row" style="gap:4px;font-size:11px" title="Market open">
+                <input type="checkbox" name="is_active" value="1" ${c.is_active ? "checked" : ""}> ${c.is_active ? "ON" : "OFF"}
+              </label>
+              <button class="btn ghost">Save</button>
+            </div>
+          </form>`);
+      }
+    }
+
+    res.send(layout("Markets", `
+      <h1>Markets</h1>
+      <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">
+        <div class="card"><div class="n">${activeCount ?? 0}</div><div class="l">Active markets</div></div>
+        <div class="card"><div class="n">${connectedCount ?? 0}</div><div class="l">Payments connected</div></div>
+        <div class="card"><div class="n">${(countries ?? []).length}</div><div class="l">Shown below</div></div>
+      </div>
+      <form method="get" action="/markets" class="row section">
+        <input type="text" name="q" value="${esc(q)}" placeholder="Search country or ISO code">
+        ${region ? `<input type="hidden" name="region" value="${esc(region)}">` : ""}
+        <label class="row" style="gap:6px"><input type="checkbox" name="active" value="1" ${activeOnly ? "checked" : ""} onchange="this.form.submit()"> Active only</label>
+        <button class="btn ghost">Search</button>
+      </form>
+      <div class="pillnav">${pills}</div>
+      <div class="card" style="padding:4px 0">${rows.join("") || `<div class="sub" style="padding:14px">No matches.</div>`}</div>
+    `, "mkt"));
+  } catch (e) { next(e); }
+});
+
+app.post("/markets/:iso2", requireAuth, async (req, res, next) => {
+  try {
+    const patch = {
+      is_active: req.body.is_active === "1",
+      payment_status: req.body.payment_status,
+      payment_provider: req.body.payment_provider?.trim() || null,
+      currency_code: req.body.currency_code?.trim().toUpperCase() || null,
+    };
+    await db.from("countries").update(patch).eq("iso2", req.params.iso2.toUpperCase());
+    res.redirect(req.get("Referer") || "/markets");
   } catch (e) { next(e); }
 });
 
