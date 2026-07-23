@@ -8,6 +8,21 @@ Each entry links to the real commit if you want to see the actual code.
 
 ---
 
+## 2026-07-23 — "Fixed: publishing a ride or route was completely broken"
+
+A bug in the fair-price protection we shipped earlier today accidentally
+broke publishing entirely: any driver trying to post a new ride or a new
+recurring route got an error, every single time. The fair-price check —
+the one that stops someone from charging, say, 9999 manat for a Baku
+trip — was written in a way that made the database reject the post
+before it even looked at the price.
+
+This fixes that. Publishing works again, and we tested it both ways: a
+normally-priced Baku→Ganja trip goes through, and an absurdly overpriced
+one is still correctly refused with a clear message explaining SameWay
+is about sharing costs, not making a profit off passengers. We also
+re-ran our full 28-point security check afterwards — all 28 still pass.
+
 ## 2026-07-23 — "You can now see who else is riding with you"
 Commit: [`0008873`](https://github.com/samewayenterprise-prog/backendsameway1.0/commit/0008873)
 
