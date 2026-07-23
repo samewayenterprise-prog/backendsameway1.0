@@ -83,3 +83,18 @@ GOAL: Backend repo ready — migrations, schema deltas, SMS-skip dev auth.
 - Diagnostic note: the env file was fine all along (key present, 41
   chars); the "Missing env" hypothesis was wrong — journalctl gave the
   real cause. Rule: read journalctl BEFORE theorising about config.
+
+## CP-10 · Migrations applied + repo fix (2026-07-23)
+- Live database (gipmcjmhqvtfcsssaotn): all 5 migrations applied via
+  Claude Code + supabase CLI (`db push`). 34 tables, RLS enabled on all,
+  5 core RPCs present, ranks(30)/badges(10) seeded, both cron jobs
+  active (expire-bookings, generate-recurring-rides).
+- Repo fix pushed (0860016) so the migration file matches what's live:
+  uuid_generate_v4() -> gen_random_uuid() (21×), gen_random_bytes(16) ->
+  extensions.gen_random_bytes(16) (1×) in 20260723000001_schema.sql.
+  Root cause: `supabase db push` runs migrations under a restricted
+  search_path where unqualified extension functions don't resolve, even
+  with the extension installed — pg_catalog functions (gen_random_uuid)
+  always resolve; pgcrypto needed explicit schema-qualification instead.
+- Database is now genuinely live. Admin panel should show real counts
+  once refreshed. Mobile onboarding can now write real rows.
