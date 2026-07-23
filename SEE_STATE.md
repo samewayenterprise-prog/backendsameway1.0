@@ -259,3 +259,30 @@ NOT done (needs external input, flagged in research):
     in create_booking) — research flagged it as missing; it is not.
   * Prohibited-items policy TEXT still to write (prohibited_ack column
     and CHECK already existed).
+
+## STANDING RULE — commit message format (2026-07-23, permanent)
+
+Every commit from here forward must contain BOTH, in the commit message
+body itself (not only in CHANGELOG.md):
+
+1. A PLAIN-LANGUAGE paragraph first — explain what changed and why it
+   matters as if to a smart 15-year-old or a non-technical cofounder.
+   No jargon, no code terms. What does this mean for the product/users?
+2. The TECHNICAL description after — what actually changed in the code,
+   for a developer reading `git log`.
+
+CHANGELOG.md still gets its own entry too (same plain-language content,
+permanently browsable on GitHub without reading commit history) — the
+changelog does NOT replace this, both are required going forward.
+
+Template:
+
+    <short technical summary line>
+
+    PLAIN ENGLISH: <what changed and why it matters, no jargon>
+
+    TECHNICAL: <what actually changed, for developers>
+
+This applies to every future commit in this repo, regardless of which
+Claude session or Claude Code session makes it. Do not drop this
+format even for small fixes.
