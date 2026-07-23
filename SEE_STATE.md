@@ -286,3 +286,40 @@ Template:
 This applies to every future commit in this repo, regardless of which
 Claude session or Claude Code session makes it. Do not drop this
 format even for small fixes.
+
+## CP-15 · Ride companion visibility (2026-07-23)
+Gap found by direct BlaBlaCar comparison (user tested their own account):
+on a ride detail screen — including a PAST completed ride — BlaBlaCar
+shows "Other passengers: Oliwia (+1)" across booking groups, tap-through
+to her full profile, rate/report/message all still available, no time
+cutoff. Our booking_passengers RLS (bp_select_member) correctly scopes
+to the caller's OWN booking group — that's right for the table itself
+(invite tokens, pending slots live there) but left no way to see other
+groups on the same ride. That was the actual, sole gap.
+
+Checked and confirmed NOT broken (no change needed):
+  * messaging — conversations are per-BOOKING already (trigger
+    trg_booking_conversation), so separate threads per group already
+    matches observed behaviour
+  * reviews — reviews_insert already has no time cutoff, only requires
+    booking.status='completed' + is_booking_member
+  * reporting — reports_insert only checks reporter_id = auth.uid(),
+    takes any reported_user_id, zero booking-scoping to begin with
+
+Built: migration 0013, ride_companions(ride_id) SECURITY DEFINER
+function. Grouped by lead passenger + companion count (matches
+"Oliwia (+1)" exactly, not a flat name list). Excludes caller's own
+booking (screen is titled "Other passengers"). Gated: caller must
+themselves be a confirmed passenger or the driver of THAT ride, else
+empty result (not an error) — not a general roster lookup. No time
+cutoff, by design, matching the observed behaviour.
+Verified the join/grouping logic against mock data from 3 perspectives
+(rider seeing others, a different rider, the driver) before shipping —
+all three produced the expected "(+N)" groupings.
+docs/ride-companions.md written alongside.
+
+## Remaining after CP-15
+1. Apply migration 0013 (Claude Code / supabase db push).
+2. Mobile: add "Other passengers" entry point on ride detail (S-10),
+   works on past rides too — not built yet, doc has the pointer.
+3. Everything still open from CP-9 through CP-14.
