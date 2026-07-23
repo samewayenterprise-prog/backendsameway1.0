@@ -8,6 +8,29 @@ Each entry links to the real commit if you want to see the actual code.
 
 ---
 
+## 2026-07-23 — "One login for the whole admin panel, not two"
+Commit: [`adb7e8e`](https://github.com/samewayenterprise-prog/backendsameway1.0/commit/adb7e8e)
+
+You pushed back, correctly — the new "All Tables" page had its own
+separate login screen, meaning you'd log into the admin panel, then
+get asked to log in *again* just for that one page. That made it feel
+like two different products stuck together instead of one real admin
+backend. Fixed: log in once, and "All Tables" now just works, no
+second password prompt. We also pushed our real brand colors (the
+same violet and blue used everywhere else) into that page.
+
+To be fully honest about the limits here: the single login is genuinely
+fixed and tested. The colors are set up correctly but we haven't
+visually confirmed them in a real browser yet — that specific check
+needs a person looking at it, not just our usual testing. And making
+this page look 100% identical to our other hand-built pages — exact
+same layout, same fonts — isn't realistically possible without
+building all ~30 remaining table pages by hand ourselves, which is the
+slow manual work this whole feature exists to avoid in the first
+place.
+
+---
+
 ## 2026-07-23 — "The scary-looking login page was just your browser's memory playing tricks"
 Commit: [`0cb76e1`](https://github.com/samewayenterprise-prog/backendsameway1.0/commit/0cb76e1)
 
