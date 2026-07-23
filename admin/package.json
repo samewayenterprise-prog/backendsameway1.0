@@ -3,11 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "SameWay ops panel — KYC review, reports moderation, marketplace overview. Service-role key stays server-side.",
-  "scripts": { "start": "node server.js" },
+  "description": "SameWay ops panel \u2014 KYC review, reports moderation, marketplace overview. Service-role key stays server-side.",
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
     "express": "^4.19.2",
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "ws": "^8.18.0"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

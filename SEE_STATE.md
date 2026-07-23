@@ -74,3 +74,12 @@ GOAL: Backend repo ready — migrations, schema deltas, SMS-skip dev auth.
    FileOptions removals + supabase_flutter imports) — repo is behind
    the working copy.
 7. Revoke the PAT when this session's pushes are done.
+
+## CP-9 · Admin deploy fix (2026-07-23)
+- VPS deploy crash-looped (86 restarts): supabase-js always constructs a
+  Realtime client, which needs a WebSocket impl; Node 20 has none native.
+  Fix: add `ws` dep + pass `realtime: { transport: ws }` in server.js.
+  Works on Node 20 and 22. Boot verified before push.
+- Diagnostic note: the env file was fine all along (key present, 41
+  chars); the "Missing env" hypothesis was wrong — journalctl gave the
+  real cause. Rule: read journalctl BEFORE theorising about config.

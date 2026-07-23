@@ -7,6 +7,7 @@
 import express from "express";
 import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
+import ws from "ws";
 
 const {
   SUPABASE_URL,
@@ -21,7 +22,13 @@ for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SECRET_KEY, ADMIN_P
   if (!v) { console.error(`Missing env: ${k}`); process.exit(1); }
 }
 
-const db = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
+// supabase-js always constructs a Realtime client, even though this
+// panel only does REST reads/writes. On Node < 22 there's no native
+// WebSocket, so hand it `ws` explicitly or startup throws.
+const db = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
+  auth: { persistSession: false },
+  realtime: { transport: ws },
+});
 const app = express();
 app.use(express.urlencoded({ extended: false }));
 
