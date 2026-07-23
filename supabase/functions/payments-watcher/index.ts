@@ -1,5 +1,5 @@
 // payments-watcher — the money loop, run on a schedule (every minute).
-// Three passes, all idempotent:
+// Four passes, all idempotent:
 //   1. Accepted parcels with no settled charge → charge sender (prepaid
 //      rule), mark parcel paid. Platform keeps PARCEL_PLATFORM_PCT
 //      (default 10%), driver gets the rest — the 5 ₼ → 4.50 ₼ split
@@ -10,6 +10,8 @@
 //      flips it on — the machinery gets exercised in sandbox anyway.)
 //   3. Pending refund rows (queued by the 004 trigger when fee-bearing
 //      bookings die) → execute refund, settle the row.
+//   4. Pending payout rows (created weekly by batch_driver_payouts(),
+//      006) → execute via the provider, flip to 'sent' or 'failed'.
 import { serviceClient } from "../_shared/service.ts";
 import { provider } from "../_shared/payments.ts";
 
@@ -17,7 +19,7 @@ Deno.serve(async (_req) => {
   const db = serviceClient();
   const pay = provider();
   const pct = Number(Deno.env.get("PARCEL_PLATFORM_PCT") ?? "10");
-  const out = { parcels: 0, fees: 0, refunds: 0, errors: [] as string[] };
+  const out = { parcels: 0, fees: 0, refunds: 0, payouts: 0, errors: [] as string[] };
 
   // ── 1 · parcel charges ────────────────────────────────────────────
   const { data: parcels, error: pErr } = await db
@@ -122,6 +124,38 @@ Deno.serve(async (_req) => {
       settled_at: new Date().toISOString(),
     }).eq("id", r.id);
     out.refunds++;
+  }
+
+  // ── 4 · payouts ────────────────────────────────────────────────────
+  const { data: payoutRows, error: poErr } = await db
+    .from("payouts")
+    .select("id, driver_id, amount")
+    .eq("status", "pending");
+  if (poErr) out.errors.push(`payout query: ${poErr.message}`);
+
+  // Note: if this function crashes between the 'processing' write and
+  // the provider response, a payout can get stuck in 'processing'
+  // forever (no longer picked up by the `pending` filter above). Not
+  // handled here — add a "stuck >1h in processing" sweep before this
+  // runs unattended at real volume; fine for now at sandbox/test scale.
+  for (const p of payoutRows ?? []) {
+    await db.from("payouts").update({ status: "processing" }).eq("id", p.id);
+
+    const res = await pay.payout({
+      amountAzn: p.amount,
+      driverId: p.driver_id,
+      reference: `payout:${p.id}`,
+    });
+
+    if (!res.ok) {
+      await db.from("payouts").update({ status: "failed" }).eq("id", p.id);
+      out.errors.push(`payout ${p.id}: ${res.error}`);
+      continue;
+    }
+    await db.from("payouts")
+      .update({ status: "sent", provider_payout_id: res.providerTxnId })
+      .eq("id", p.id);
+    out.payouts++;
   }
 
   return new Response(JSON.stringify(out), {

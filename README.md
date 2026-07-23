@@ -13,9 +13,17 @@ supabase/
     20260723000002_functions_triggers.sql   RPCs, gamification engine, penalties
     20260723000003_rls.sql                  57 policies, column grants, views
     20260723000004_product_deltas.sql       fee · delivery code · boost · return-ride · polyline
+    20260723000005_ops_support.sql          ride generator, cron, notification dispatch tracking
+    20260723000006_payouts.sql              driver balance crediting + weekly payout batch
+  tests/
+    000_rls.test.sql             pgTAP — 28 assertions proving cross-user isolation
 docs/
-  dev-auth-skip-sms.md         phone sign-in with no SMS provider (test OTPs)
-SEE_STATE.md                   execution state & remaining steps
+  dev-auth-skip-sms.md          phone sign-in with no SMS provider (test OTPs)
+  edge-functions.md             deploy, secrets, schedules, sandbox e2e recipe
+  admin-deploy-vps.md           one-paste VPS install for the ops panel
+  rls-testing.md                how to run the RLS test suite, local + hosted
+admin/                          ops panel (see admin-deploy-vps.md)
+SEE_STATE.md                    execution state & remaining steps
 ```
 
 ## Applying to the hosted project

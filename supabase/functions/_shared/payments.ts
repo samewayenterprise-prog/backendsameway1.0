@@ -17,6 +17,12 @@ export interface RefundParams {
   reference: string;
 }
 
+export interface PayoutParams {
+  amountAzn: number;
+  driverId: string;
+  reference: string; // deterministic, e.g. payout:<payouts.id>
+}
+
 export interface PaymentResult {
   ok: boolean;
   providerTxnId: string;
@@ -27,6 +33,7 @@ export interface PaymentProvider {
   name: string;
   charge(p: ChargeParams): Promise<PaymentResult>;
   refund(p: RefundParams): Promise<PaymentResult>;
+  payout(p: PayoutParams): Promise<PaymentResult>;
 }
 
 class SandboxProvider implements PaymentProvider {
@@ -40,12 +47,16 @@ class SandboxProvider implements PaymentProvider {
   refund(p: RefundParams): Promise<PaymentResult> {
     return Promise.resolve({ ok: true, providerTxnId: `sbx_rf_${p.reference}` });
   }
+  payout(p: PayoutParams): Promise<PaymentResult> {
+    return Promise.resolve({ ok: true, providerTxnId: `sbx_po_${p.reference}` });
+  }
 }
 
 class EpointProvider implements PaymentProvider {
   name = "epoint";
   // ── TODO (fill from Epoint API docs before flipping PAYMENTS_MODE) ──
-  // 1. Endpoints: card-storage charge (token payments) + refund.
+  // 1. Endpoints: card-storage charge (token payments) + refund + payout.
+  //    Epoint supports 24/7 payouts to any AZ bank card per the tech doc.
   // 2. Signature: Epoint uses base64(json) + signature over
   //    private_key + data + private_key (verify exact scheme in docs).
   // 3. Env: EPOINT_PUBLIC_KEY, EPOINT_PRIVATE_KEY (set via
@@ -54,6 +65,9 @@ class EpointProvider implements PaymentProvider {
   // 5. For checkout-style payments (screen 46 with a new card), the
   //    client opens Epoint's page and the epoint-webhook function (to
   //    be added) confirms — this provider handles saved-token charges.
+  // 6. Payout needs the driver's payout method on file (bank card per
+  //    settings screen SE-40) — fetch it inside this method or pass it
+  //    in via PayoutParams once that lookup is wired.
   private key = Deno.env.get("EPOINT_PUBLIC_KEY");
   charge(_p: ChargeParams): Promise<PaymentResult> {
     return Promise.resolve({
@@ -63,6 +77,13 @@ class EpointProvider implements PaymentProvider {
     });
   }
   refund(_p: RefundParams): Promise<PaymentResult> {
+    return Promise.resolve({
+      ok: false,
+      providerTxnId: "",
+      error: "epoint_not_configured — see TODO in _shared/payments.ts",
+    });
+  }
+  payout(_p: PayoutParams): Promise<PaymentResult> {
     return Promise.resolve({
       ok: false,
       providerTxnId: "",

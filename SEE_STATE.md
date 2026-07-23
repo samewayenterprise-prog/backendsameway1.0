@@ -98,3 +98,38 @@ GOAL: Backend repo ready — migrations, schema deltas, SMS-skip dev auth.
   always resolve; pgcrypto needed explicit schema-qualification instead.
 - Database is now genuinely live. Admin panel should show real counts
   once refreshed. Mobile onboarding can now write real rows.
+
+## CP-11 · RLS test suite + payouts (2026-07-23)
+- supabase/tests/000_rls.test.sql: pgTAP, 28 assertions. Proves (not
+  claims) cross-user isolation on users/verifications/bookings/
+  transactions/driver_balances/messages/reports; insert-spoofing
+  blocked on follows/blocks; anonymous access boundary; bookings
+  RPC-only (direct INSERT denied); one column-lock spot check
+  (driver_profiles counters). docs/rls-testing.md has run instructions
+  (local via `supabase test db`, hosted via pgTAP extension + linked).
+  Caught 2 real fixture bugs while writing it: follows_insert requires
+  a driver_profiles row to exist (policy-level existence check), and
+  driver_profiles has column-level grants on top of RLS.
+- Migration 0006 (payouts): driver_balances had ZERO writers before
+  this — a real gap. Added: trg_credit_driver_balance (+ an insert
+  variant, since sandbox settles same-transaction) credits `pending`
+  on settled charges, debits symmetrically on settled refunds with
+  amount_driver>0, floored at 0 with a reconciliation note rather than
+  going negative. batch_driver_payouts(min=5 AZN) sweeps pending into
+  payouts rows weekly (Mon 04:00 UTC, after the nightly generator).
+- payments-watcher extended with pass 4: executes pending payouts via
+  the provider abstraction (sandbox default), flips sent/failed.
+  Known gap flagged in docs: no stuck-processing recovery yet if the
+  function crashes mid-payout — fine at test volume.
+- _shared/payments.ts: added payout() to the provider interface;
+  Epoint TODOs updated to include payout wiring.
+
+## Remaining after CP-11
+1. Push (needs a token or manual push — not yet pushed this round).
+2. Run the RLS suite for real (`supabase test db --linked` after
+   enabling pgTAP) — everything above is written+reasoned-through but
+   UNVERIFIED against the live database. Say so plainly until it's run.
+3. Everything from CP-9/CP-10 still open: Phone provider + test OTPs,
+   Edge Function deploys + secrets + schedules, mobile onboarding e2e,
+   mobile local-fix commit.
+4. Revoke the PAT if/when used again for this push.

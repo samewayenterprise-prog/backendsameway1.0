@@ -4,15 +4,16 @@ Three functions ship in `supabase/functions/`:
 
 | Function | Job | Trigger |
 |---|---|---|
-| `payments-watcher` | Charges accepted parcels (prepaid rule), charges booking fees via `record_booking_fee()`, executes the refund queue | Schedule: every minute |
+| `payments-watcher` | Charges accepted parcels (prepaid rule), charges booking fees via `record_booking_fee()`, executes the refund queue, **executes pending payouts** | Schedule: every minute |
 | `notify-dispatch` | Delivers undelivered `notifications` rows via FCM (log-only without a key) | Schedule: every minute |
 | `admin-kyc` | Manual KYC review: flips `id_verified_at` / `selfie_verified_at` | Called by you (secret header) |
 
-The nightly **ride generator** is *not* an Edge Function — it's pure SQL
-(`generate_recurring_rides()`, migration 0005) scheduled with pg_cron at
-03:00 UTC, following the existing `expire-bookings` pattern. Generated
-rides fire the existing follower fan-out trigger, so the follow loop is:
-generator → rides insert → notifications rows → `notify-dispatch` → push.
+The nightly **ride generator** and weekly **payout batcher** are *not*
+Edge Functions — they're pure SQL (`generate_recurring_rides()`,
+`batch_driver_payouts()`) scheduled with pg_cron, following the existing
+`expire-bookings` pattern. The batcher (Mondays 04:00 UTC) sweeps each
+driver's `pending` balance into a `payouts` row; `payments-watcher` then
+executes it through the provider and flips `sent`/`failed`.
 
 ## Deploy
 
@@ -83,8 +84,11 @@ End-to-end recipe (two test users from `docs/dev-auth-skip-sms.md`):
 - **Epoint live integration** — slots and TODOs are marked in
   `_shared/payments.ts`; needs their API docs + merchant keys. Includes
   the checkout-page flow + an `epoint-webhook` function for new-card
-  payments (screen 46).
-- **Payouts** (driver balance → card) — needs Epoint's payout API;
-  design already in the tech doc.
+  payments (screen 46), plus wiring `payout()` to a driver's actual
+  payout method on file (bank card, SE-40).
 - **FCM HTTP v1 migration** — legacy server-key endpoint is wired for
   speed; move to the OAuth service-account API before scale.
+- **Stuck-payout recovery** — if `payments-watcher` crashes between
+  marking a payout `processing` and getting the provider's response, it
+  won't be picked up again automatically. Fine at test volume; add a
+  "stuck >1h" sweep before relying on this unattended in production.
