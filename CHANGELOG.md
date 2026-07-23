@@ -8,6 +8,20 @@ Each entry links to the real commit if you want to see the actual code.
 
 ---
 
+## 2026-07-23 — "The scary-looking login page was just your browser's memory playing tricks"
+Commit: [`0cb76e1`](https://github.com/samewayenterprise-prog/backendsameway1.0/commit/0cb76e1)
+
+You saw the new "All Tables" login page showing generic third-party
+branding instead of SameWay's — turned out to be a false alarm caused
+by your browser holding onto an old cached copy of that page from
+earlier while we were still fixing the connection settings. A hard
+refresh clears it. While double-checking, we did fix one small real
+mistake: a setting meant to hide a little "made with" credit line at
+the bottom of that page had a typo in its name, so it was silently
+doing nothing. Fixed.
+
+---
+
 ## 2026-07-23 — "Added a page that shows every single table in our database"
 Commit: [`ca0c430`](https://github.com/samewayenterprise-prog/backendsameway1.0/commit/ca0c430)
 
