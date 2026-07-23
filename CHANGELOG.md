@@ -8,6 +8,22 @@ Each entry links to the real commit if you want to see the actual code.
 
 ---
 
+## 2026-07-23 — "Ask the driver a quick question before you book"
+Commit: [`1fe5db7`](https://github.com/samewayenterprise-prog/backendsameway1.0/commit/1fe5db7)
+
+Found by comparing directly against BlaBlaCar again: there's a
+"Negotiate" button on a ride, separate from "Book," that lets you ask
+the driver something quick first — a different meeting spot, a
+different drop-off, or just to say hi — before you've committed to
+anything. We checked our app and had nothing like this at all: the only
+way to message a driver was after you'd already requested a seat.
+
+This adds that missing earlier step. Pick a quick question type, send
+it (you can edit the pre-filled text), and you land in a normal chat
+with the driver — no booking attached, no commitment. Ask a second
+question later on the same ride and it goes into that same
+conversation instead of starting a brand new one each time.
+
 ## 2026-07-23 — "Fixed: publishing a ride or route was completely broken"
 
 A bug in the fair-price protection we shipped earlier today accidentally
