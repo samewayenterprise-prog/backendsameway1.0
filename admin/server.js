@@ -31,6 +31,7 @@ const db = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
 });
 const app = express();
 app.use(express.urlencoded({ extended: false }));
+app.use(express.static("public", { maxAge: "1d" }));
 
 // ── tiny signed-cookie session ─────────────────────────────────────
 const sign = (v) => crypto.createHmac("sha256", SESSION_SECRET).update(v).digest("hex");
@@ -62,12 +63,16 @@ function layout(title, body, active = "") {
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)} · SameWay Admin</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
 :root{--bg:#F6F4FB;--sf:#fff;--ln:#E1DCEF;--tx:#241E38;--sub:#6E6690;--vi:#5B23FF;--az:#008BFF;--ok:#1FA866;--er:#E03A57}
 *{box-sizing:border-box;margin:0}
 body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--tx)}
 header{display:flex;align-items:center;gap:18px;padding:14px 22px;background:var(--sf);border-bottom:1px solid var(--ln)}
-header b{font-size:15px}
+header .brand{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:800;text-decoration:none;color:var(--tx)}
+header .brand img{height:26px;width:auto;display:block}
+header .brand .sep{color:var(--sub);font-weight:600}
 .tab{color:var(--sub);text-decoration:none;font-weight:600;font-size:13.5px;padding:6px 10px;border-radius:8px}
 .tab.on{color:#fff;background:var(--vi)}
 main{max-width:1060px;margin:26px auto;padding:0 20px}
@@ -93,7 +98,7 @@ input[type=text],input[type=password]{padding:10px 12px;border:1.5px solid var(-
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .section{margin-bottom:26px}
 </style></head><body>
-<header><b>SAME<span style="color:var(--vi)">WAY</span> · Admin</b>
+<header><a class="brand" href="/"><img src="/sameway-mark.png" alt="SameWay"><span>SAME<span style="color:var(--vi)">WAY</span></span><span class="sep">·</span><span style="font-weight:600;color:var(--sub)">Admin</span></a>
 ${tab("/", "Dashboard", "dash")}${tab("/kyc", "KYC", "kyc")}${tab("/reports", "Reports", "rep")}${tab("/users", "Users", "usr")}${tab("/settings", "Settings", "set")}
 <span style="flex:1"></span><a class="tab" href="/logout">Log out</a></header>
 <main>${body}</main></body></html>`;
@@ -102,8 +107,11 @@ ${tab("/", "Dashboard", "dash")}${tab("/kyc", "KYC", "kyc")}${tab("/reports", "R
 // ── auth routes ────────────────────────────────────────────────────
 app.get("/login", (_req, res) => {
   res.send(layout("Login", `
-    <h1>Admin login</h1>
-    <form method="post" action="/login" class="card" style="max-width:380px">
+    <div style="text-align:center;margin-bottom:24px">
+      <img src="/sameway-mark.png" alt="SameWay" style="height:64px;width:auto">
+      <div style="font-weight:800;font-size:18px;margin-top:8px">SAME<span style="color:var(--vi)">WAY</span> <span style="color:var(--sub);font-weight:600">· Admin</span></div>
+    </div>
+    <form method="post" action="/login" class="card" style="max-width:380px;margin:0 auto">
       <p class="sub" style="margin-bottom:10px">Ops access only.</p>
       <input type="password" name="password" placeholder="Admin password" autofocus>
       <div style="margin-top:12px"><button class="btn">Enter</button></div>
