@@ -323,3 +323,42 @@ docs/ride-companions.md written alongside.
 2. Mobile: add "Other passengers" entry point on ride detail (S-10),
    works on past rides too — not built yet, doc has the pointer.
 3. Everything still open from CP-9 through CP-14.
+
+## CP-16 · Pre-booking ride inquiries (2026-07-23)
+Gap found by direct BlaBlaCar comparison: a "Negocjuj" (Negotiate)
+button on ride detail, separate from Book, opens 4 templated questions
+(different meeting point / different drop-off / another special
+request / just want to chat) and starts a chat thread with the driver
+— with NO booking request behind it at all. Distinct from our existing
+screen-45 message, which fires AFTER a booking request exists.
+
+Confirmed complete gap before building (not partial): conversations.
+booking_id was already nullable so a ride-only thread was structurally
+possible, but the ONLY insert path was trg_booking_conversation, gated
+on booking.status='confirmed'. conversation_type_t had no type for
+this. RLS (is_conversation_member) is correctly circular for
+bootstrapping — nothing could have created a usable pre-booking
+conversation via a raw insert either.
+
+Built: migration 0015. start_ride_inquiry(ride_id, template, message)
+— SECURITY DEFINER RPC, same pattern as create_booking (does its own
+RLS-protected inserts, no policy changes needed since existing
+conv_select/msg_select/cp_select already key off
+conversation_participants membership). Find-or-reuse via a
+(ride_id, initiator_id) partial unique index + ON CONFLICT — one
+thread per rider per ride, race-safe against a double-tap, verified by
+hand-tracing 5 scenarios (new/repeat/second-rider/driver-blocked/
+concurrent) before shipping. messages.inquiry_template tags the
+prompting category on the first message. Existing messages_scrub and
+messages_notify triggers fire automatically, no duplication.
+
+Noted a real Postgres caveat in the migration + doc: ALTER TYPE ADD
+VALUE can't be used in the same command that adds it — placed first in
+the file for that reason, flagged clearly so a future failure there
+isn't mysterious.
+
+## Remaining after CP-16
+1. Apply migration 0015 (git pull + supabase db push).
+2. Mobile: ride detail needs a "Negotiate" button + 4-template picker
+   (doc has the screen pointer) — not built.
+3. Everything still open from CP-9 through CP-15.
