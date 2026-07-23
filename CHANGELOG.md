@@ -8,6 +8,31 @@ Each entry links to the real commit if you want to see the actual code.
 
 ---
 
+## 2026-07-23 — "You can now see who else is riding with you"
+Commit: [`0008873`](https://github.com/samewayenterprise-prog/backendsameway1.0/commit/0008873)
+
+We compared our app directly against BlaBlaCar and found something
+they do that we didn't: on any ride — even one that already happened
+weeks ago — you can see everyone else who's also riding along, even if
+they booked as a totally separate group from you. Like seeing "Oliwia +
+1 friend" also in the car, with a link to her profile where you can
+rate her, message her, or report her if something was off.
+
+We checked our app and realized we only ever showed you your *own*
+group — never anyone else sharing the ride. That's a real trust gap,
+since "who am I riding with" is exactly the kind of thing that makes
+people feel safe using a carpooling app. This fixes it. It works on old
+completed rides too, not just upcoming ones.
+
+While building this, we also double-checked three related things and
+confirmed they already worked correctly and didn't need fixing: you can
+already message your driver on old rides, you can already rate someone
+from an old ride, and you can already report someone regardless of
+whether you're in their booking group. Only the "see who else is here"
+part was actually missing.
+
+---
+
 ## 2026-07-23 — "Don't let drivers overcharge, and don't pressure tired drivers into driving"
 Commit: [`dec628f`](https://github.com/samewayenterprise-prog/backendsameway1.0/commit/dec628f)
 
