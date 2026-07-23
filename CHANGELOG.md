@@ -8,6 +8,20 @@ Each entry links to the real commit if you want to see the actual code.
 
 ---
 
+## 2026-07-23 — "The 'ask the driver' feature is now actually live on the server"
+
+The "ask a quick question before you book" feature below was written
+and saved, but when we went to switch it on, the database refused it on
+a technicality — the change introduced a new category of conversation
+and tried to use that new category in the very same step that created
+it, which the database doesn't allow. The fix was simply splitting it
+into two steps: first teach the database the new category exists, then
+build everything that uses it. Both steps are now live, and we tested
+the real behavior end to end: asking a question works, asking a second
+question joins the same chat instead of starting a new one, two
+different riders get separate chats, and a driver can't "ask a
+question" on their own ride. All 28 security checks still pass.
+
 ## 2026-07-23 — "Ask the driver a quick question before you book"
 Commit: [`1fe5db7`](https://github.com/samewayenterprise-prog/backendsameway1.0/commit/1fe5db7)
 
