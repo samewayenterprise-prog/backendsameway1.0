@@ -8,6 +8,31 @@ Each entry links to the real commit if you want to see the actual code.
 
 ---
 
+## 2026-07-23 — "Checked: the website can browse rides without any backend changes"
+
+While building the website's ride search, we audited whether the
+backend needed changes to let logged-out visitors browse rides. Good
+news: it didn't — the security rules were already designed for this
+from day one. Anyone can see published rides, driver names, photos
+and ratings; nobody can see phone numbers, documents, or anything
+private; and booking without signing in is impossible (we tried — it
+fails hard, as it should).
+
+We proved this by running an exact local copy of the production
+system — same database rules, same API layer — and attacking it from
+both sides: as a logged-out stranger and as a signed-in rider. One
+real booking went through correctly, seat counts updated, and the
+fair-price cap even rejected one of our own test rides for being
+priced 26 qəpik too high. No code changed in this commit — this is
+the written record of what was checked and found.
+
+One item flagged for a future decision (not urgent): the current
+rules let anyone see an active car's plate number before booking. The
+website deliberately doesn't show plates, but we should consciously
+decide whether the rule itself should be tighter.
+
+---
+
 ## 2026-07-23 — "One login for the whole admin panel, not two"
 Commit: [`adb7e8e`](https://github.com/samewayenterprise-prog/backendsameway1.0/commit/adb7e8e)
 

@@ -502,3 +502,49 @@ is the realistic middle ground.
 2. Visually confirm brand colors actually render correctly in a real
    browser — not yet confirmed, only configured.
 3. Everything still open from CP-9 through CP-17.
+
+## CP-19 · Web Phase 2a recon: public browse surfaces already existed (2026-07-23)
+While wiring the web app's search/detail/booking (samewayweb repo,
+commit 5757cc6), audited whether anon browsing needed a new migration.
+Finding: NO backend change needed — the schema was already designed
+for pre-auth browsing:
+  * rides_select: `status in ('published','full') or driver_id =
+    auth.uid()` with no `to` clause → applies to anon.
+  * public_profiles view: already `grant select ... to authenticated,
+    anon` (safe columns only; users base table stays owner-only and
+    returns zero rows to anon — verified via `set role anon`).
+  * dp_select_all on driver_profiles: `using (true)` → ratings public.
+  * create_booking(p_ride_id, p_seat_count, p_payment default 'cash',
+    p_pickup, p_dropoff) — signature confirmed for the web RPC call.
+
+Verified not just by reading policies but by running the REAL stack
+locally: PostgREST 14.15 binary + all 16 migrations + a prod-faithful
+auth.uid() (reads request.jwt.claims->>'sub', exactly like hosted) +
+Supabase default-privilege emulation + minted HS256 JWTs. Anon search/
+profile/rating reads work; authed create_booking returned a uuid with
+instant-book auto-confirm and fee_amount 0.00 (fees off); seats
+decremented 3→2 atomically; anon booking attempt fails hard (null
+lead_passenger_id NOT NULL violation — no silent booking possible).
+
+Two notable findings, no action taken:
+  1. FLAG FOR REVIEW: veh_select exposes ACTIVE vehicles including
+     plate_number to anon. The web app deliberately renders only
+     make/model/colour, but the POLICY allows plate reads pre-booking.
+     Decide consciously whether plate should be booking-gated (mobile
+     shows plate to confirmed passengers to find the car — that path
+     would need a narrower policy or a public_vehicles view without
+     plate). Not urgent; plates are street-visible anyway.
+  2. The price-ceiling trigger (0010/0014) REJECTED one of our own
+     seed rides during testing: 2.50 AZN on Baku→Sumqayit with 4
+     seats exceeds the computed 2.24 ceiling (passes at 3 seats,
+     matching the CP-14 calibration table exactly). The mechanism
+     defends against its own developers — working as designed.
+
+## Remaining after CP-19
+1. Decide plate-visibility policy (flag above).
+2. Hosted project has no published rides yet — web search live will be
+   empty until a driver publishes or ops seeds one (All Tables /data
+   panel can do it).
+3. Web live-verification runbook (SMS OTP with Supabase test numbers)
+   is in samewayweb README — needs a human with a browser.
+4. Everything still open from CP-9 through CP-18.
