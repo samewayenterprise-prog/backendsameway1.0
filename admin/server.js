@@ -108,7 +108,7 @@ input[type=text],input[type=password]{padding:10px 12px;border:1.5px solid var(-
 .subhead{font-weight:700;font-size:11.5px;color:var(--sub);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.4px}
 </style></head><body>
 <header><a class="brand" href="/"><img src="/sameway-mark.png" alt="SameWay"><span>SAME<span style="color:var(--vi)">WAY</span></span><span class="sep">·</span><span style="font-weight:600;color:var(--sub)">Admin</span></a>
-${tab("/", "Dashboard", "dash")}${tab("/kyc", "KYC", "kyc")}${tab("/reports", "Reports", "rep")}${tab("/users", "Users", "usr")}${tab("/markets", "Markets", "mkt")}${tab("/settings", "Settings", "set")}
+${tab("/", "Dashboard", "dash")}${tab("/kyc", "KYC", "kyc")}${tab("/reports", "Reports", "rep")}${tab("/users", "Users", "usr")}${tab("/markets", "Markets", "mkt")}${tab("/ops", "Ops", "ops")}${tab("/settings", "Settings", "set")}
 <span style="flex:1"></span><a class="tab" href="/logout">Log out</a></header>
 <main>${body}</main></body></html>`;
 }
@@ -435,11 +435,110 @@ app.post("/markets/:iso2", requireAuth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+app.post("/settings/pricing", requireAuth, async (req, res, next) => {
+  try {
+    const num = (v, min, max) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= min && n <= max ? n : null;
+    };
+    const patch = {};
+    const fuel = num(req.body.fuel_price_per_litre, 0, 100);
+    const cons = num(req.body.fuel_consumption_l_100km, 1, 50);
+    const wear = num(req.body.vehicle_wear_per_km, 0, 10);
+    // Hard-bounded: above ~1.5 the cost-sharing/non-profit argument
+    // weakens, which is the whole point of the ceiling. The DB has a
+    // CHECK for this too — this is just a friendlier first line.
+    const mult = num(req.body.price_ceiling_multiplier, 1.0, 2.0);
+    if (fuel !== null) patch.fuel_price_per_litre = fuel;
+    if (cons !== null) patch.fuel_consumption_l_100km = cons;
+    if (wear !== null) patch.vehicle_wear_per_km = wear;
+    if (mult !== null) patch.price_ceiling_multiplier = mult;
+    if (Object.keys(patch).length) {
+      await db.from("platform_settings").update(patch).eq("id", 1);
+    }
+    res.redirect("/settings");
+  } catch (e) { next(e); }
+});
+
+app.post("/settings/gate", requireAuth, async (req, res, next) => {
+  try {
+    const patch = {};
+    const rides = parseInt(String(req.body.fee_gate_min_daily_rides), 10);
+    const fill = Number(req.body.fee_gate_min_fill_rate);
+    if (Number.isInteger(rides) && rides >= 0) patch.fee_gate_min_daily_rides = rides;
+    if (Number.isFinite(fill) && fill >= 0 && fill <= 1) patch.fee_gate_min_fill_rate = fill;
+    if (Object.keys(patch).length) {
+      await db.from("platform_settings").update(patch).eq("id", 1);
+    }
+    res.redirect("/settings");
+  } catch (e) { next(e); }
+});
+
+// ── ops (cron health + liquidity gate) ─────────────────────────────
+app.get("/ops", requireAuth, async (_req, res, next) => {
+  try {
+    const { data: liq } = await db.rpc("corridor_liquidity", { p_days: 7 });
+    const { data: jobs, error: jobErr } = await db.from("job_health").select("*");
+    const { data: pendingJobs } = await db
+      .from("notification_jobs")
+      .select("*", { count: "exact", head: true })
+      .is("processed_at", null);
+
+    const ready = liq?.ready_for_fees;
+    const liqCard = liq ? `
+      <div class="card section">
+        <div class="row" style="justify-content:space-between">
+          <div>
+            <b>Fee readiness</b>
+            ${ready ? '<span class="badge ok">THRESHOLD MET</span>'
+                    : '<span class="badge">BUILDING LIQUIDITY</span>'}
+            <div class="sub">Last ${esc(liq.window_days)} days · turning the fee on before the marketplace is liquid suppresses the supply you're trying to build.</div>
+          </div>
+        </div>
+        <div class="grid" style="margin-top:12px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+          <div class="card"><div class="n">${esc(liq.rides_per_day)}</div><div class="l">Rides / day (need ${esc(liq.min_daily_rides)})</div></div>
+          <div class="card"><div class="n">${Math.round((liq.fill_rate ?? 0) * 100)}%</div><div class="l">Seat fill rate (need ${Math.round((liq.min_fill_rate ?? 0) * 100)}%)</div></div>
+          <div class="card"><div class="n">${esc(liq.seats_booked)}/${esc(liq.seats_offered)}</div><div class="l">Seats booked / offered</div></div>
+        </div>
+      </div>` : `<div class="card section sub">Liquidity data unavailable — is migration 0012 applied?</div>`;
+
+    const jobRows = (jobs ?? []).map((j) => {
+      const stale = j.last_run_at
+        ? `<span class="sub">${fmtDate(j.last_run_at)}</span>`
+        : `<span class="badge er">never run</span>`;
+      const status = j.last_run_ok === true ? '<span class="badge ok">ok</span>'
+                   : j.last_run_ok === false ? '<span class="badge er">failed</span>'
+                   : '<span class="badge">—</span>';
+      return `<tr>
+        <td><b>${esc(j.job_name)}</b>${j.active ? "" : ' <span class="badge er">inactive</span>'}</td>
+        <td class="sub">${esc(j.schedule)}</td>
+        <td>${stale}</td>
+        <td>${status}</td>
+        <td class="sub">${esc(j.last_error || "")}</td>
+      </tr>`;
+    }).join("");
+
+    res.send(layout("Ops", `
+      <h1>Operations</h1>
+      ${liqCard}
+      <div class="section">
+        <h1 style="font-size:15px">Scheduled jobs</h1>
+        <p class="sub" style="margin-bottom:8px">pg_cron does not retry, silently skips overlapping runs, and raises no alerts — this table is the only visibility.</p>
+        <table><tr><th>Job</th><th>Schedule</th><th>Last run</th><th>Status</th><th>Error</th></tr>
+        ${jobRows || `<tr><td colspan=5 class="sub">${jobErr ? esc(jobErr.message) : "No jobs found."}</td></tr>`}</table>
+      </div>
+      <div class="card">
+        <div class="sb"><b>Notification queue backlog</b><b>${pendingJobs ?? 0}</b></div>
+        <div class="sub">Unprocessed follower fan-out jobs. Should hover near zero; a growing number means the worker isn't running.</div>
+      </div>`, "ops"));
+  } catch (e) { next(e); }
+});
+
 // ── settings (platform fee toggle) ─────────────────────────────────
 app.get("/settings", requireAuth, async (_req, res, next) => {
   try {
     const { data: s } = await db.from("platform_settings")
-      .select("fees_enabled, booking_fee_azn, parcel_platform_pct, updated_at")
+      .select("*")
       .eq("id", 1).maybeSingle();
 
     const status = s?.fees_enabled
@@ -478,6 +577,42 @@ app.get("/settings", requireAuth, async (_req, res, next) => {
           </label>
         </div>
         <div style="margin-top:10px"><button class="btn ghost">Save amounts</button></div>
+      </form>
+
+      <form method="post" action="/settings/pricing" class="card section">
+        <b>Cost-share ceiling parameters</b>
+        <div class="sub" style="margin:6px 0 10px">
+          These set the <b>maximum</b> a driver may charge per seat — the mechanism that keeps SameWay a cost-sharing platform rather than an unlicensed taxi service. Drivers cannot publish above the computed ceiling. Raising the multiplier above ~1.5 weakens the non-profit argument; don't, without legal advice. Per-country overrides live on the Markets page. See <code>docs/pricing-and-legal.md</code>.
+        </div>
+        <div class="row">
+          <label>Fuel price (AZN/L)
+            <input type="text" name="fuel_price_per_litre" value="${s?.fuel_price_per_litre ?? "1.200"}">
+          </label>
+          <label>Consumption (L/100km)
+            <input type="text" name="fuel_consumption_l_100km" value="${s?.fuel_consumption_l_100km ?? "8.00"}">
+          </label>
+          <label>Vehicle wear (AZN/km)
+            <input type="text" name="vehicle_wear_per_km" value="${s?.vehicle_wear_per_km ?? "0.080"}">
+          </label>
+          <label>Ceiling multiplier
+            <input type="text" name="price_ceiling_multiplier" value="${s?.price_ceiling_multiplier ?? "1.25"}">
+          </label>
+        </div>
+        <div style="margin-top:10px"><button class="btn ghost">Save pricing</button></div>
+      </form>
+
+      <form method="post" action="/settings/gate" class="card section">
+        <b>Fee activation thresholds</b>
+        <div class="sub" style="margin:6px 0 10px">Liquidity levels the corridor should reach before switching fees on. Current progress is on the <a href="/ops" style="color:var(--az)">Ops</a> page.</div>
+        <div class="row">
+          <label>Min rides / day
+            <input type="text" name="fee_gate_min_daily_rides" value="${s?.fee_gate_min_daily_rides ?? 20}">
+          </label>
+          <label>Min fill rate (0–1)
+            <input type="text" name="fee_gate_min_fill_rate" value="${s?.fee_gate_min_fill_rate ?? "0.60"}">
+          </label>
+        </div>
+        <div style="margin-top:10px"><button class="btn ghost">Save thresholds</button></div>
       </form>`, "set"));
   } catch (e) { next(e); }
 });

@@ -192,3 +192,70 @@ GOAL: Backend repo ready — migrations, schema deltas, SMS-skip dev auth.
 1. Apply migration 0008 (Claude Code / supabase db push).
 2. VPS: git pull + restart to get the Markets tab.
 3. Everything still open from CP-9 through CP-12.
+
+## CP-14 · Research recommendations applied (2026-07-23)
+Migrations 0010–0012 + admin surfaces, from the BlaBlaCar/market research.
+
+- 0010 PRICING. Two distinct mechanisms, both needed:
+  * cost_share_ceiling() — HARD block, the legal safe-harbour. Driver
+    cannot publish above it. This was the research's #1 risk (no price
+    cap = drivers can profit = unlicensed commercial transport under
+    the AYNA taxi regime, since AZ has no carpooling statute).
+  * ride_price_guidance() — SOFT advisory returning corridor
+    percentiles for the price meter Huseyn asked for.
+  Params global + per-country overridable (opening a market = setting
+  its fuel price, not editing code).
+  Numeric verification caught three real bugs before shipping:
+    1. straight-line distance understated Baku–Ganja by 26% → ceiling
+       blocked the design's own 15 AZN fare → road_distance_factor 1.30
+    2. multiplier permitted PROFIT above 4 seats (schema allows 8) →
+       added LEAST(..., trip_cost/seats) hard bound
+    3. round() rounded up past cost by qapik → truncate instead
+  A short-trip floor was tried and rejected: 8 seats × floor on a 26 km
+  hop = minibus economics. Replaced with base_trip_cost_azn so the
+  invariant holds by construction. Verified: 3 corridors × 8 seat
+  counts, collected never exceeds cost, realistic fares still publish.
+
+- 0011 INTEGRITY & SAFETY.
+  * CHECK (seats_available between 0 and seats_total) — DB-level
+    oversell guard beneath the existing FOR UPDATE logic.
+  * accept_booking_invite now checks the BOOKING's expiry, not just
+    the invite's — real gap, sweeper can lag 60s+ and pg_cron never
+    retries.
+  * STREAK SAFETY: driver route-streak moved from ride COMPLETION to
+    ride PUBLISH. A completion-based streak tells a tired driver
+    "drive tonight or lose 12 weeks" — the Uber gamification failure
+    mode. Now publishing availability maintains it; cancelling costs
+    nothing. Freezes 1→2/quarter. Rider streaks left on completion
+    (passengers carry no equivalent safety pressure).
+  * parcels.declared_value + platform cap (crowdshipping liability).
+
+- 0012 PERF & OPS.
+  * All 42 policies referencing auth.uid() rewritten to
+    (select auth.uid()) — generated mechanically from 003 and
+    diff-checked so predicates cannot drift. Per-row → per-query
+    evaluation.
+  * 16 indexes on RLS predicate columns.
+  * Follower fan-out moved OUT of the publish transaction into a job
+    queue + worker. Previously a 5,000-follower driver did 5,000
+    inserts before publish could commit — publish got slower the more
+    successful the driver became.
+  * job_runs + run_job() wrapper + job_health view; generator and
+    payout cron re-pointed through it. pg_cron has no retry, no
+    alerting, and silently skips overlapping runs.
+  * corridor_liquidity() + fee-gate thresholds: fee activation is a
+    liquidity decision, not a calendar one.
+
+- Admin: new Ops tab (cron health, notification backlog, fee-readiness
+  vs thresholds); Settings gains pricing params + gate thresholds.
+- docs/pricing-and-legal.md explains why ceiling ≠ meter.
+
+NOT done (needs external input, flagged in research):
+  * AZ legal counsel on: platform fee vs commercial classification;
+    whether the 90/10 parcel split is freight brokerage; store
+    compliance. Cannot be resolved by building.
+  * KYC vendor (Sumsub/Veriff both cover AZ/Cyrillic) — pick + sandbox.
+  * Ladies-only already existed in schema (ladies_only + gender check
+    in create_booking) — research flagged it as missing; it is not.
+  * Prohibited-items policy TEXT still to write (prohibited_ack column
+    and CHECK already existed).
