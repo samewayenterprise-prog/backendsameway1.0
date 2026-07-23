@@ -4,6 +4,9 @@ Database schema, functions/triggers, RLS, and auth configuration for
 SameWay. The Flutter client lives in `flutterpackmobile`; full product
 context in the project doc set (tech doc, screen map, DESIGN.md).
 
+Not a developer? Read [`CHANGELOG.md`](./CHANGELOG.md) instead — every
+change explained in plain language, no code required.
+
 ## Layout
 ```
 supabase/
