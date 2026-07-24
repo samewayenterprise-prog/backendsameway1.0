@@ -8,6 +8,41 @@ Each entry links to the real commit if you want to see the actual code.
 
 ---
 
+## 2026-07-23 — "Found and fixed four things that were quietly broken"
+
+Building the website's messaging and ratings screens meant running a
+real trip all the way through for the first time — book it, approve
+it, finish it, rate it — against a full copy of the live system. Four
+things turned out to be broken. None had ever shown up, because no
+trip had ever actually been completed on a real database yet.
+
+1. **Drivers couldn't approve or decline bookings.** At all. The
+   approval button would have failed every single time.
+2. **No chat was ever created.** Confirming a booking is supposed to
+   open a message thread between driver and passenger. It never did —
+   and for instant-book rides, the code that creates it wasn't even
+   reached.
+3. **Rides could never be marked finished.** A bookkeeping mistake in
+   the streaks feature stopped the whole "trip completed" process, so
+   bookings never closed, nobody was ever asked to leave a rating, and
+   drivers' completed-trip counts never went up.
+4. **Passengers lost access to their own trip once it ended.** Your
+   booking stayed, but the trip details vanished — blank routes in My
+   Bookings and in your messages, and the rating page wouldn't open at
+   all. So riders literally could not rate a driver.
+
+All four are fixed, and each fix was verified by running the real
+sequence again: book, approve, message, complete, rate. Existing
+confirmed bookings that never got a chat will have one created
+automatically.
+
+Worth saying plainly: these were caught because we tested the actual
+flow rather than trusting that the pieces worked. The existing
+automated security tests passed the whole time — they were checking
+the right things, just not these.
+
+---
+
 ## 2026-07-23 — "Checked: the website can browse rides without any backend changes"
 
 While building the website's ride search, we audited whether the
